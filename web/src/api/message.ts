@@ -39,9 +39,6 @@ export const messageApi = {
   read(id: number) {
     return request<void>({ url: '/v1/messages/read', method: 'post', data: { ids: [id] } })
   },
-  readBatch(ids: number[]) {
-    return request<void>({ url: '/v1/messages/read', method: 'post', data: { ids } })
-  },
   readAll() {
     return request<void>({ url: '/v1/messages/read-all', method: 'post' })
   },

@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import com.ttdemo.modules.message.service.MessageService;
 
 @Service
 public class SettlementServiceImpl implements SettlementService {
@@ -66,7 +67,7 @@ public class SettlementServiceImpl implements SettlementService {
     private final SysConfigService configService;
     private final AuditLogService auditLogService;
     private final IssueSettleStatusWriter statusWriter;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final MessageService messageService;
 
     public SettlementServiceImpl(LotIssueMapper issueMapper, PrdPredictionMapper predictionMapper,
                                  PrdPredictionItemMapper itemMapper, OrdPredictionOrderMapper orderMapper,
@@ -76,7 +77,7 @@ public class SettlementServiceImpl implements SettlementService {
                                  ScoreService scoreService, HitJudge hitJudge,
                                  SysConfigService configService, AuditLogService auditLogService,
                                  IssueSettleStatusWriter statusWriter,
-                                 com.ttdemo.modules.message.service.MessageService messageService) {
+                                 MessageService messageService) {
         this.messageService = messageService;
         this.statusWriter = statusWriter;
         this.issueMapper = issueMapper;

@@ -29,6 +29,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.ttdemo.modules.growth.service.GrowthService;
+import com.ttdemo.modules.order.pay.WxPayClient;
 
 @Service
 public class RechargeServiceImpl implements RechargeService {
@@ -49,14 +51,14 @@ public class RechargeServiceImpl implements RechargeService {
     @Value("${app.pay.provider:mock}")
     private String payProvider;
 
-    private final com.ttdemo.modules.growth.service.GrowthService growthService;
-    private final com.ttdemo.modules.order.pay.WxPayClient wxPayClient;
+    private final GrowthService growthService;
+    private final WxPayClient wxPayClient;
 
     public RechargeServiceImpl(OrdRechargeOrderMapper orderMapper, OrdPayNotifyLogMapper notifyLogMapper,
                                SysUserMapper userMapper, PointService pointService,
                                SysConfigService configService,
-                               com.ttdemo.modules.growth.service.GrowthService growthService,
-                               com.ttdemo.modules.order.pay.WxPayClient wxPayClient) {
+                               GrowthService growthService,
+                               WxPayClient wxPayClient) {
         this.orderMapper = orderMapper;
         this.notifyLogMapper = notifyLogMapper;
         this.userMapper = userMapper;

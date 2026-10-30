@@ -6,6 +6,7 @@ import com.ttdemo.modules.prediction.dto.PredictionQuery;
 import com.ttdemo.modules.prediction.engine.PriceCalculator;
 
 import java.util.Map;
+import com.ttdemo.modules.prediction.entity.PrdPrediction;
 
 public interface PredictionService {
 
@@ -43,13 +44,13 @@ public interface PredictionService {
     /**
      * 置顶推广：按天扣积分并把预测置顶，返回到期时间与消耗积分
      */
-    java.util.Map<String, Object> promote(Long id, int days, Long userId);
+    Map<String, Object> promote(Long id, int days, Long userId);
 
     /** 定时任务：停售到点锁定（3 → 4），返回锁定条数 */
     int lockExpired();
 
     /** 供结算任务读取 */
-    com.ttdemo.modules.prediction.entity.PrdPrediction requireById(Long id);
+    PrdPrediction requireById(Long id);
 
     /** 按状态统计预测数量（后台仪表盘用） */
     long countByStatus(int status);

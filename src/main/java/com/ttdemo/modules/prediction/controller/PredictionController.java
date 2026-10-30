@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import com.ttdemo.security.SecurityUtils;
 
 @RestController
 @RequestMapping("/api/v1/predictions")
@@ -106,10 +107,10 @@ public class PredictionController {
      */
     @PostMapping("/{id}/promote")
     @RequireCreator
-    public R<java.util.Map<String, Object>> promote(@PathVariable Long id,
+    public R<Map<String, Object>> promote(@PathVariable Long id,
                                                     @RequestBody(required = false) PromoteRequest request) {
         int days = request == null || request.days() == null ? 3 : request.days();
-        return R.ok(predictionService.promote(id, days, com.ttdemo.security.SecurityUtils.currentUserId()));
+        return R.ok(predictionService.promote(id, days, SecurityUtils.currentUserId()));
     }
 
     public record PromoteRequest(Integer days) {

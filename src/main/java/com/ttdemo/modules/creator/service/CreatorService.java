@@ -4,7 +4,6 @@ import com.ttdemo.common.api.PageResult;
 import com.ttdemo.modules.creator.dto.CreatorDtos;
 import com.ttdemo.modules.creator.entity.CreCreator;
 
-import java.util.List;
 import java.util.Map;
 
 public interface CreatorService {

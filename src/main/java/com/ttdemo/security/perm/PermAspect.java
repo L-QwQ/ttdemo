@@ -8,6 +8,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import com.ttdemo.security.SecurityUtils;
 
 /**
  * 权限点 / 创作者资格切面。
@@ -35,7 +36,7 @@ public class PermAspect {
 
     @Before("@annotation(com.ttdemo.security.perm.RequireCreator)")
     public void checkCreator() {
-        Long userId = com.ttdemo.security.SecurityUtils.currentUserId();
+        Long userId = SecurityUtils.currentUserId();
         SysUser user = userMapper.selectById(userId);
         if (user == null) {
             throw new BizException(ResultCode.UNAUTHORIZED);

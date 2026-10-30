@@ -16,8 +16,6 @@ public interface OrderService {
     /** 预测撤回/下架时全额退款，返回退款订单数 */
     int refundByPrediction(Long predictionId, String reason);
 
-    PageResult<OrderDtos.OrderVO> listForAdmin(long pageNum, long pageSize, Integer status, String keyword);
-
     /** 按状态统计订单数量（后台仪表盘用） */
     long countByStatus(int status);
 }

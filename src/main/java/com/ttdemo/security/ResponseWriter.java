@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import com.ttdemo.common.trace.TraceIds;
 
 /**
  * 过滤器链内直接输出统一格式 JSON（此处不引入 Jackson，避免序列化器版本差异）
@@ -21,7 +22,7 @@ final class ResponseWriter {
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"code\":" + resultCode.getCode()
                 + ",\"message\":\"" + resultCode.getMessage()
-                + "\",\"data\":null,\"traceId\":\"" + com.ttdemo.common.trace.TraceIds.current() + "\"}");
+                + "\",\"data\":null,\"traceId\":\"" + TraceIds.current() + "\"}");
         response.getWriter().flush();
     }
 

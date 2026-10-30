@@ -1,8 +1,8 @@
 package com.ttdemo.modules.risk.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.ttdemo.modules.system.entity.SysConfig;
-import com.ttdemo.modules.system.mapper.SysConfigMapper;
+import com.ttdemo.modules.risk.entity.RiskSensitiveWord;
+import com.ttdemo.modules.risk.mapper.RiskSensitiveWordMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,9 +26,9 @@ public class RiskService {
     /** 命中词 → level（2 拦截，1 提示） */
     private final Map<String, Integer> words = new ConcurrentHashMap<>();
 
-    private final com.ttdemo.modules.risk.mapper.RiskSensitiveWordMapper wordMapper;
+    private final RiskSensitiveWordMapper wordMapper;
 
-    public RiskService(com.ttdemo.modules.risk.mapper.RiskSensitiveWordMapper wordMapper) {
+    public RiskService(RiskSensitiveWordMapper wordMapper) {
         this.wordMapper = wordMapper;
     }
 
@@ -40,10 +40,10 @@ public class RiskService {
     public void refresh() {
         words.clear();
         try {
-            List<com.ttdemo.modules.risk.entity.RiskSensitiveWord> list = wordMapper.selectList(
-                    new LambdaQueryWrapper<com.ttdemo.modules.risk.entity.RiskSensitiveWord>()
-                            .eq(com.ttdemo.modules.risk.entity.RiskSensitiveWord::getStatus, 1));
-            for (com.ttdemo.modules.risk.entity.RiskSensitiveWord w : list) {
+            List<RiskSensitiveWord> list = wordMapper.selectList(
+                    new LambdaQueryWrapper<RiskSensitiveWord>()
+                            .eq(RiskSensitiveWord::getStatus, 1));
+            for (RiskSensitiveWord w : list) {
                 words.put(w.getWord().toLowerCase(Locale.ROOT), w.getLevel() == null ? 1 : w.getLevel());
             }
             log.info("敏感词库加载完成，共 {} 条", words.size());

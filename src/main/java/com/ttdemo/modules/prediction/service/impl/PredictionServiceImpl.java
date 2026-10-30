@@ -50,6 +50,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.ttdemo.modules.message.service.MessageService;
+import com.ttdemo.modules.point.service.PointService;
+import com.ttdemo.modules.prediction.mapper.PromotionMapper;
 
 @Service
 public class PredictionServiceImpl implements PredictionService {
@@ -93,9 +96,9 @@ public class PredictionServiceImpl implements PredictionService {
     private final SysConfigService configService;
     private final AuditLogService auditLogService;
     private final AesCrypto aesCrypto;
-    private final com.ttdemo.modules.point.service.PointService pointService;
-    private final com.ttdemo.modules.prediction.mapper.PromotionMapper promotionMapper;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final PointService pointService;
+    private final PromotionMapper promotionMapper;
+    private final MessageService messageService;
 
     public PredictionServiceImpl(PrdPredictionMapper predictionMapper, PrdPredictionItemMapper itemMapper,
                                  PrdAuditRecordMapper auditRecordMapper, LotIssueMapper issueMapper,
@@ -105,9 +108,9 @@ public class PredictionServiceImpl implements PredictionService {
                                  OrderService orderService, PriceCalculator priceCalculator,
                                  RiskService riskService, SysConfigService configService,
                                  AuditLogService auditLogService, AesCrypto aesCrypto,
-                                 com.ttdemo.modules.point.service.PointService pointService,
-                                 com.ttdemo.modules.prediction.mapper.PromotionMapper promotionMapper,
-                                 com.ttdemo.modules.message.service.MessageService messageService) {
+                                 PointService pointService,
+                                 PromotionMapper promotionMapper,
+                                 MessageService messageService) {
         this.messageService = messageService;
         this.pointService = pointService;
         this.promotionMapper = promotionMapper;
@@ -603,7 +606,7 @@ public class PredictionServiceImpl implements PredictionService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public java.util.Map<String, Object> promote(Long id, int days, Long userId) {
+    public Map<String, Object> promote(Long id, int days, Long userId) {
         PrdPrediction prediction = requireById(id);
         if (prediction.getUserId() == null || !prediction.getUserId().equals(userId)) {
             throw new BizException(ResultCode.FORBIDDEN, "只能推广自己发布的预测");
@@ -629,7 +632,7 @@ public class PredictionServiceImpl implements PredictionService {
         promotionMapper.insert(id, prediction.getCreatorId(), userId, cost, safeDays,
                 base.isBefore(now) ? now : base, end);
 
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("predictionId", id);
         result.put("days", safeDays);
         result.put("pointsCost", cost);

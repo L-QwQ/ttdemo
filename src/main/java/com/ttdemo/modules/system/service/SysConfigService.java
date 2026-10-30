@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.ttdemo.common.api.ResultCode;
+import com.ttdemo.common.exception.BizException;
 
 /**
  * 系统配置中心：启动加载全量到内存，后台修改后热更新。
@@ -92,10 +94,10 @@ public class SysConfigService {
     public void update(String key, String value, Long operatorId) {
         SysConfig existing = mapper.selectOne(new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, key));
         if (existing == null) {
-            throw new com.ttdemo.common.exception.BizException(com.ttdemo.common.api.ResultCode.NOT_FOUND, "配置项不存在: " + key);
+            throw new BizException(ResultCode.NOT_FOUND, "配置项不存在: " + key);
         }
         if (existing.getEditable() != null && existing.getEditable() == 0) {
-            throw new com.ttdemo.common.exception.BizException(com.ttdemo.common.api.ResultCode.STATE_CONFLICT, "该项需发版修改");
+            throw new BizException(ResultCode.STATE_CONFLICT, "该项需发版修改");
         }
         existing.setConfigValue(value);
         existing.setUpdatedBy(operatorId);

@@ -25,6 +25,9 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import com.ttdemo.common.api.PageResult;
+import com.ttdemo.modules.message.service.MessageService;
+import java.util.Map;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -40,13 +43,13 @@ public class UserServiceImpl implements UserService {
     private final UsrDeactivationMapper deactivationMapper;
     private final PointService pointService;
     private final SysConfigService configService;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final MessageService messageService;
 
     public UserServiceImpl(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
                            SmsCodeService smsCodeService, AvatarStorageService avatarStorageService,
                            UsrDeactivationMapper deactivationMapper, PointService pointService,
                            SysConfigService configService,
-                           com.ttdemo.modules.message.service.MessageService messageService) {
+                           MessageService messageService) {
         this.messageService = messageService;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
@@ -270,13 +273,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public java.util.Map<String, Object> myDeactivation(Long userId) {
+    public Map<String, Object> myDeactivation(Long userId) {
         UsrDeactivation record = deactivationMapper.selectOne(new LambdaQueryWrapper<UsrDeactivation>()
                 .eq(UsrDeactivation::getUserId, userId));
         if (record == null) {
             return null;
         }
-        java.util.Map<String, Object> view = new java.util.LinkedHashMap<>();
+        Map<String, Object> view = new java.util.LinkedHashMap<>();
         view.put("id", record.getId());
         view.put("status", record.getStatus());
         view.put("statusName", switch (record.getStatus() == null ? 0 : record.getStatus()) {
@@ -292,7 +295,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public com.ttdemo.common.api.PageResult<java.util.Map<String, Object>> listDeactivations(
+    public PageResult<Map<String, Object>> listDeactivations(
             long pageNum, long pageSize, Integer status) {
         com.baomidou.mybatisplus.extension.plugins.pagination.Page<UsrDeactivation> page =
                 deactivationMapper.selectPage(new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize),
@@ -300,9 +303,9 @@ public class UserServiceImpl implements UserService {
                                 .eq(status != null, UsrDeactivation::getStatus, status)
                                 .orderByAsc(UsrDeactivation::getStatus)
                                 .orderByDesc(UsrDeactivation::getId));
-        java.util.List<java.util.Map<String, Object>> list = new java.util.ArrayList<>();
+        java.util.List<Map<String, Object>> list = new java.util.ArrayList<>();
         for (UsrDeactivation r : page.getRecords()) {
-            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
             row.put("id", r.getId());
             row.put("userId", r.getUserId());
             row.put("phone", r.getPhone());
@@ -320,7 +323,7 @@ public class UserServiceImpl implements UserService {
             row.put("createdAt", r.getCreatedAt());
             list.add(row);
         }
-        return com.ttdemo.common.api.PageResult.of(page.getTotal(), pageNum, pageSize, list);
+        return PageResult.of(page.getTotal(), pageNum, pageSize, list);
     }
 
     @Override

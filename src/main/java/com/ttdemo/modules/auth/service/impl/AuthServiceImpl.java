@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import com.ttdemo.modules.system.service.SysConfigService;
 
 @Service
 public class AuthServiceImpl implements AuthService {
@@ -43,7 +44,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final LoginLogService loginLogService;
     private final GrowthService growthService;
-    private final com.ttdemo.modules.system.service.SysConfigService configService;
+    private final SysConfigService configService;
 
     public AuthServiceImpl(SmsCodeService smsCodeService,
                            UserService userService,
@@ -51,7 +52,7 @@ public class AuthServiceImpl implements AuthService {
                            PasswordEncoder passwordEncoder,
                            LoginLogService loginLogService,
                            GrowthService growthService,
-                           com.ttdemo.modules.system.service.SysConfigService configService) {
+                           SysConfigService configService) {
         this.smsCodeService = smsCodeService;
         this.userService = userService;
         this.tokenProvider = tokenProvider;

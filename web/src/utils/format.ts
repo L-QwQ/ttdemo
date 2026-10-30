@@ -16,8 +16,3 @@ export function formatFen(fen: number | null | undefined): string {
   const value = (fen ?? 0) / 100
   return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-
-/** 分 → ￥ 字符串 */
-export function formatYuan(fen: number | null | undefined): string {
-  return `¥${formatFen(fen)}`
-}

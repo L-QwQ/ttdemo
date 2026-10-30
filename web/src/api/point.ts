@@ -19,16 +19,6 @@ export interface RechargeResult {
   mockPayUrl: string | null
 }
 
-export interface RechargeStatus {
-  orderNo: string
-  amountFen: number
-  points: number
-  bonusPoints: number
-  status: number
-  statusName: string
-  payTime: string | null
-}
-
 export const pointApi = {
   account() {
     return request<PointAccount>({ url: '/v1/points/account', method: 'get' })
@@ -45,9 +35,6 @@ export const pointApi = {
       method: 'post',
       data: { amountFen, payChannel },
     })
-  },
-  rechargeStatus(orderNo: string) {
-    return request<RechargeStatus>({ url: `/v1/recharge/orders/${orderNo}`, method: 'get' })
   },
   mockPay(orderNo: string) {
     return request<void>({ url: `/v1/recharge/orders/${orderNo}/mock-pay`, method: 'post', data: {} })

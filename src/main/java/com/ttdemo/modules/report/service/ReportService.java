@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.ttdemo.modules.message.service.MessageService;
 
 /**
  * 内容举报：用户提交 → 后台处置 →（可选）自动下架。
@@ -40,11 +41,11 @@ public class ReportService {
     private final PredictionService predictionService;
     private final UserService userService;
     private final SysConfigService configService;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final MessageService messageService;
 
     public ReportService(SysReportMapper reportMapper, PredictionService predictionService,
                          UserService userService, SysConfigService configService,
-                         com.ttdemo.modules.message.service.MessageService messageService) {
+                         MessageService messageService) {
         this.messageService = messageService;
         this.reportMapper = reportMapper;
         this.predictionService = predictionService;

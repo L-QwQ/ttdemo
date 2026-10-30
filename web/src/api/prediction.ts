@@ -62,9 +62,6 @@ export const predictionApi = {
       data: payload,
     })
   },
-  update(id: number, payload: PredictionSavePayload) {
-    return request<void>({ url: `/v1/predictions/${id}`, method: 'put', data: payload })
-  },
   submit(id: number) {
     return request<{ status: number; auditEstimateMinutes: number }>({
       url: `/v1/predictions/${id}/submit`,

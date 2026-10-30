@@ -6,6 +6,8 @@ import com.ttdemo.modules.user.entity.SysUser;
 
 import java.util.Collection;
 import java.util.List;
+import com.ttdemo.common.api.PageResult;
+import java.util.Map;
 
 /**
  * 用户领域服务：只做用户本身的读写，不处理令牌与验证码
@@ -54,10 +56,10 @@ public interface UserService {
     Long applyDeactivation(Long userId, String reason);
 
     /** 我的注销申请（无则 null） */
-    java.util.Map<String, Object> myDeactivation(Long userId);
+    Map<String, Object> myDeactivation(Long userId);
 
     /** 后台：注销申请分页 */
-    com.ttdemo.common.api.PageResult<java.util.Map<String, Object>> listDeactivations(
+    PageResult<Map<String, Object>> listDeactivations(
             long pageNum, long pageSize, Integer status);
 
     /** 后台：审批注销，通过则扣减剩余积分、停用账号并登记退款 */

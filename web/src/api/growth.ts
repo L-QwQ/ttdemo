@@ -18,13 +18,6 @@ export interface SignInResult {
   balance: number
 }
 
-export interface InviteInfo {
-  inviteCode: string
-  inviteReward: number
-  firstRechargeReward: number
-  invitedCount: number
-}
-
 export interface ReportPayload {
   targetType: number
   targetId: number
@@ -58,9 +51,6 @@ export const growthApi = {
   },
   signIn() {
     return request<SignInResult>({ url: '/v1/growth/sign-in', method: 'post' })
-  },
-  invite() {
-    return request<InviteInfo>({ url: '/v1/growth/invite', method: 'get' })
   },
 }
 

@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import com.ttdemo.modules.message.service.MessageService;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -46,12 +47,12 @@ public class OrderServiceImpl implements OrderService {
     private final LotIssueMapper issueMapper;
     private final SysUserMapper userMapper;
     private final PointService pointService;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final MessageService messageService;
 
     public OrderServiceImpl(OrdPredictionOrderMapper orderMapper, PrdPredictionMapper predictionMapper,
                             CreCreatorMapper creatorMapper, LotIssueMapper issueMapper,
                             SysUserMapper userMapper, PointService pointService,
-                            com.ttdemo.modules.message.service.MessageService messageService) {
+                            MessageService messageService) {
         this.messageService = messageService;
         this.orderMapper = orderMapper;
         this.predictionMapper = predictionMapper;
@@ -222,16 +223,6 @@ public class OrderServiceImpl implements OrderService {
         }
         log.info("预测 {} 退款完成，共 {} 笔", predictionId, count);
         return count;
-    }
-
-    @Override
-    public PageResult<OrderDtos.OrderVO> listForAdmin(long pageNum, long pageSize, Integer status, String keyword) {
-        LambdaQueryWrapper<OrdPredictionOrder> query = new LambdaQueryWrapper<OrdPredictionOrder>()
-                .eq(status != null, OrdPredictionOrder::getStatus, status)
-                .like(keyword != null && !keyword.isBlank(), OrdPredictionOrder::getOrderNo, keyword)
-                .orderByDesc(OrdPredictionOrder::getId);
-        Page<OrdPredictionOrder> page = orderMapper.selectPage(new Page<>(pageNum, pageSize), query);
-        return PageResult.of(page.getTotal(), pageNum, pageSize, enrich(page.getRecords()));
     }
 
     private List<OrderDtos.OrderVO> enrich(List<OrdPredictionOrder> orders) {

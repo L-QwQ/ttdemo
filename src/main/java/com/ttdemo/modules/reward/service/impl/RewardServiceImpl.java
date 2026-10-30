@@ -26,10 +26,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.ttdemo.modules.message.service.MessageService;
 
 @Service
 public class RewardServiceImpl implements RewardService {
@@ -45,12 +45,12 @@ public class RewardServiceImpl implements RewardService {
     private final PointService pointService;
     private final UserService userService;
     private final SysConfigService configService;
-    private final com.ttdemo.modules.message.service.MessageService messageService;
+    private final MessageService messageService;
 
     public RewardServiceImpl(AccRewardItemMapper itemMapper, AccRewardOrderMapper orderMapper,
                              PointService pointService, UserService userService,
                              SysConfigService configService,
-                             com.ttdemo.modules.message.service.MessageService messageService) {
+                             MessageService messageService) {
         this.messageService = messageService;
         this.itemMapper = itemMapper;
         this.orderMapper = orderMapper;

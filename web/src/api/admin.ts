@@ -91,9 +91,6 @@ export const adminApi = {
   }) {
     return request<PageResult<Feedback>>({ url: '/admin/feedback', method: 'get', params: query })
   },
-  feedbackDetail(id: number) {
-    return request<Feedback>({ url: `/admin/feedback/${id}`, method: 'get' })
-  },
   replyFeedback(id: number, payload: { reply: string; status: number }) {
     return request<void>({ url: `/admin/feedback/${id}/reply`, method: 'put', data: payload })
   },
