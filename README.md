@@ -374,6 +374,25 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 - 期次列表排序 `draw_time DESC, id DESC`（不用字符串 issue_no 比较，否则 8 位测试期号会顶到最前）
 - `lot_issue.settle_status`：`PENDING / RUNNING / DONE / FAILED`，`settlePending` 会一并捞取卡死超 30 分钟的 RUNNING 重试
 
+**官方数据源**（均为官方公开接口，非第三方爬虫，拉取带 UA/Referer，连接 6s / 读 15s 超时）：
+
+| 彩种 | 数据源 | 参数 |
+|---|---|---|
+| 双色球 SSQ | `www.cwl.gov.cn` 福彩官方查询接口 | `name=ssq` |
+| 福彩 3D FC3D | 同上 | `name=3d` |
+| 快乐 8 KL8 | 同上 | `name=kl8` |
+| 大乐透 DLT | `webapi.sporttery.cn` 体彩官方接口 | `gameNo=85`，结果拆 5 前区 + 2 后区 |
+| 排列 3 PL3 | 同上 | `gameNo=35` |
+
+**同步策略**：
+
+- 按 `(type_code, issue_no)` **upsert**，重复执行幂等（已存在且号码一致 → 跳过）；已结算期次不覆盖，避免破坏账目
+- 校验复用 `LotteryService.validateNumbers`，失败落 `lot_sync_error`
+- 统计口径只认官方期号，历史测试期次不参与热号/冷号计算
+- `ensure-upcoming` 按最新真实期号 +1 并结合开奖日历（`draw_weekdays` / `draw_time_of_day`）生成下一期，跨年自动重置为 `001`
+- 开关：`sys_config.feature.draw.sync`；代理：`app.draw.proxy`（留空则读环境变量 `HTTPS_PROXY`）
+- 同步接口返回 `{fetched, inserted, updated, skipped, failed, message, errors[]}`
+
 ### 8.2 随机预测
 
 15 种方法分三组（`modules/random/RandomMethod.java`）：
@@ -385,6 +404,18 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 | `MYSTIC` | 易经起卦、五行生克、八字、生肖、塔罗、黄历 | 是 |
 
 玄学算法集中在 `MysticEngine`，结果带娱乐性声明。非会员每天有 `random.vip.daily.free`（默认 3）次免费试用，会员不限；配额表 `rnd_daily_usage`，消耗用条件 UPDATE，天然防并发超用。
+
+**实现要点**：
+
+- **一注号码个数**优先取历史开奖结构（SSQ 6+1、DLT 5+2、FC3D/PL3 3 位、KL8 20 个），无历史时用内置标准表——`play_config.pickMin` 是「可选取号码数范围」，不等于注数
+- FC3D / PL3 按**位号**处理，允许重复号码（如 `7,0,0`），其余彩种号码不重复且升序展示
+- 输出 `items` 与发布接口 `PredictionDtos.ItemRequest` 同构，前端「带入发布页」直接填充（`sessionStorage: ttdemo.randomDraft`）
+- 历史数据不足**不禁用**方法，降级为纯随机并在方法卡上提示，避免整排灰掉
+- 可选 `seed`，同 seed 结果可复现（`OMISSION` 完全确定）
+- **参考期数联动**：改期数后 400ms 防抖自动重算；结果区显示「使用最近 N 期」，参数区显示「库中可用 M 期」
+- **数据可溯源**：结果下方给出数据说明 + 来源构成（自动同步 / 人工录入），可展开查看每期期号、开奖时间、开奖号、来源
+- 生成的期次数据来自 `lot_issue` 表 `draw_status=1` 的记录，`dataSource` 区分 1=自动同步、2=人工录入
+- 接口免登录：`GET /api/v1/random/methods`、`GET /api/v1/random/history`、`POST /api/v1/random/generate`；页面：`/random`
 
 ### 8.3 定时任务（`job/ScheduledJobs`）
 
