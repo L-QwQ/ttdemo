@@ -1,0 +1,85 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: ttdemo
+  profiles:
+    active: dev
+  jackson:
+    default-property-inclusion: always
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+app:
+  # 敏感字段（姓名/身份证/手机号）AES-256-GCM 密钥，生产必须用环境变量覆盖
+  crypto:
+    key: ${APP_CRYPTO_KEY:ttdemo-dev-only-change-me}
+  # 支付通道：mock（本地联调）/ wechat / alipay
+  # 官方开奖数据同步：代理留空则读环境变量 HTTPS_PROXY（本地开发用）
+  draw:
+    proxy: ${APP_DRAW_PROXY:}
+  pay:
+    provider: ${APP_PAY_PROVIDER:mock}
+    mock-secret: ${APP_PAY_SECRET:ttdemo-mock-pay-secret}
+    # 微信支付 v3：provider=wechat 时必填，否则下单会明确报未配置
+    wechat:
+      appid: ${WX_PAY_APPID:}
+      mch-id: ${WX_PAY_MCH_ID:}
+      serial-no: ${WX_PAY_SERIAL_NO:}
+      private-key-path: ${WX_PAY_PRIVATE_KEY_PATH:}
+      api-v3-key: ${WX_PAY_API_V3_KEY:}
+      platform-public-key-path: ${WX_PAY_PLATFORM_PUBLIC_KEY_PATH:}
+      notify-url: ${WX_PAY_NOTIFY_URL:}
+  jwt:
+    # 生产环境必须用环境变量 APP_JWT_SECRET 覆盖（>= 32 字节）
+    secret: ${APP_JWT_SECRET:ttdemo-dev-secret-please-change-in-production}
+    issuer: ttdemo
+    access-token-ttl: 30m
+    refresh-token-ttl: 7d
+  sms:
+    # mock：验证码打印到日志并在接口返回；aliyun：走阿里云短信
+    provider: ${APP_SMS_PROVIDER:mock}
+    code-length: 6
+    expire: 5m
+    resend-interval: 60s
+    daily-limit: 10
+    max-attempts: 5
+    aliyun:
+      access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:}
+      access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:}
+      sign-name: ${ALIYUN_SMS_SIGN_NAME:}
+      template-code: ${ALIYUN_SMS_TEMPLATE_CODE:}
+      endpoint: dysmsapi.aliyuncs.com
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+  # 本地上传（头像），目录按启动目录解析；URL 走 /api 前缀以复用前端代理
+  upload:
+    dir: ${APP_UPLOAD_DIR:./data/uploads}
+    url-prefix: /api/uploads
+    max-size: 2097152
+  init:
+    admin-phone: ${ADMIN_PHONE:13800000000}
+    admin-password: ${ADMIN_PASSWORD:admin123456}
+
+logging:
+  level:
+    com.ttdemo: debug
+    org.springframework.security: info
