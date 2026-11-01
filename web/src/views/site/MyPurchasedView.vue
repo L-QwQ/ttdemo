@@ -26,13 +26,13 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-my-purchased">
     <h1>我的解锁</h1>
     <el-card shadow="never" class="block">
       <el-table v-loading="loading" :data="list" size="small">
         <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip>
           <template #default="{ row }">
-            <a class="link" @click="router.push(`/prediction/${row.id}`)">{{ row.title }}</a>
+            <router-link class="link" :to="`/prediction/${row.id}`">{{ row.title }}</router-link>
           </template>
         </el-table-column>
         <el-table-column prop="typeCode" label="彩种" width="80" />
@@ -72,10 +72,9 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
 h1 { font-size: 22px; margin: 0 0 16px; }
 .block { border-radius: 12px; }
 .link { color: var(--el-color-primary); cursor: pointer; }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
+.muted { color: var(--text-sub); font-size: 12px; }
 .pager { margin-top: 12px; justify-content: center; }
 </style>

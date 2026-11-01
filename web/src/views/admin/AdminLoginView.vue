@@ -37,7 +37,7 @@ async function handleLogin() {
 </script>
 
 <template>
-  <div class="admin-login">
+  <div class="admin-login ui-page view-admin-login">
     <div class="panel">
       <div class="panel-head">
         <span class="brand-mark">彩</span>
@@ -75,7 +75,7 @@ async function handleLogin() {
   place-items: center;
   min-height: 100vh;
   padding: 40px 24px;
-  background: linear-gradient(135deg, #1f1616 0%, #3a2320 55%, #d92b2b 160%);
+  background: linear-gradient(135deg, #1f1616 0%, #3a2320 55%, var(--brand) 160%);
 }
 
 .panel {
@@ -126,7 +126,7 @@ async function handleLogin() {
   padding: 9px 12px;
   font-size: 12px;
   color: var(--text-sub);
-  background: #f5f7fb;
+  background: var(--surface-soft);
   border-radius: 8px;
 }
 

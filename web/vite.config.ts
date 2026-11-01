@@ -75,6 +75,67 @@ function elementPlusOnDemandResolver() {
 
 const epResolver = elementPlusOnDemandResolver()
 
+const SRC_DIR = fileURLToPath(new URL('./src', import.meta.url))
+
+function kebabCase(name: string): string {
+  return name
+    .replace(/^El/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+}
+
+/**
+ * 按需引入的副作用：`element-plus/es/components/<dir>/index.mjs` 是**运行到哪张页面才被发现**的
+ * 依赖。开发态首次打开某个用到新组件的页面时，vite 会重新预构建依赖，正在加载的模块随即变成
+ * 旧哈希 → 浏览器拿到 504 `Outdated Optimize Dep` → 动态 import 失败 → 路由白屏
+ * （「发布预测」用 el-slider，最容易踩到）。
+ *
+ * 这里在配置期扫描 src 下真正用到的 el-xxx，把它们提前写进 optimizeDeps.include，
+ * 让预构建在启动时一次做完，运行中不再重新预构建。扫不到的组件仍按需发现，只是回到旧行为。
+ */
+function collectElementPlusDeps(): string[] {
+  const deps = new Set<string>(['element-plus/es/components/base/style/css'])
+
+  const addComponent = (name: string) => {
+    const entry = EP_COMPONENT_PATHS.get(name)
+    if (!entry) return
+    deps.add(entry)
+    // 样式入口按组件自身目录走（ElFormItem 的 JS 入口在 form，样式却在 form-item）
+    const style = `element-plus/es/components/${kebabCase(name)}/style/css`
+    if (fs.existsSync(path.join(EP_COMPONENTS_DIR, kebabCase(name), 'style', 'css.mjs'))) {
+      deps.add(style)
+    }
+  }
+
+  // 脚本里按函数调用的组件不会被模板扫描命中
+  for (const name of ['ElMessage', 'ElMessageBox', 'ElNotification', 'ElLoading']) {
+    addComponent(name)
+  }
+
+  const walk = (dir: string) => {
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, item.name)
+      if (item.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!/\.(vue|ts)$/.test(item.name) || item.name.endsWith('.d.ts')) continue
+      const code = fs.readFileSync(full, 'utf8')
+      for (const match of code.matchAll(/<el-([a-z0-9-]+)/g)) {
+        addComponent(`El${match[1].split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')}`)
+      }
+      for (const match of code.matchAll(/\bEl(Message|MessageBox|Notification|Loading)\b/g)) {
+        addComponent(`El${match[1]}`)
+      }
+    }
+  }
+
+  if (fs.existsSync(SRC_DIR)) walk(SRC_DIR)
+  return [...deps]
+}
+
+const EP_OPTIMIZE_DEPS = collectElementPlusDeps()
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -96,6 +157,10 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  optimizeDeps: {
+    // 预构建一次性做完，避免开发态中途重新预构建导致模块 504
+    include: EP_OPTIMIZE_DEPS,
   },
   server: {
     port: 5173,

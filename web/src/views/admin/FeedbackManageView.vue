@@ -119,7 +119,7 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card ui-page view-feedback-manage">
     <h2 class="page-title">用户反馈</h2>
     <p class="page-desc">用户提交的问题与建议，回复后用户可在主站「意见反馈」中看到</p>
 
@@ -144,7 +144,7 @@ onMounted(fetchList)
       <el-button @click="handleReset">重置</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="userPhone" label="用户" width="130" />
       <el-table-column label="类型" width="110">
@@ -227,12 +227,6 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
 .meta {
   margin-bottom: 16px;
 }
@@ -244,7 +238,7 @@ onMounted(fetchList)
 
 .content-block {
   padding: 12px 14px;
-  background: #f7f8fb;
+  background: var(--surface-soft);
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.8;

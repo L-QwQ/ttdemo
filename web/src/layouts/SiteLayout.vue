@@ -86,6 +86,10 @@ async function handleCommand(command: string) {
     router.push('/my/purchased')
     return
   }
+  if (command === 'picks') {
+    router.push('/my/picks')
+    return
+  }
   if (command === 'creator') {
     router.push('/creator/dashboard')
     return
@@ -102,12 +106,13 @@ async function handleCommand(command: string) {
       <div class="header-inner">
         <router-link to="/" class="brand">
           <span class="brand-mark">彩</span>
-          <span class="brand-text">慧彩预测</span>
+          <span class="brand-copy"><span class="brand-text">慧彩预测</span><span class="brand-caption">让每一份分析有迹可循</span></span>
         </router-link>
 
-        <nav class="nav">
+        <nav class="nav" aria-label="主导航">
           <router-link to="/" class="nav-link" :class="{ active: isHome }">首页</router-link>
           <router-link to="/predictions" class="nav-link" active-class="active">预测广场</router-link>
+          <router-link to="/draws" class="nav-link" active-class="active">开奖</router-link>
           <router-link to="/rank" class="nav-link" active-class="active">榜单</router-link>
           <router-link to="/random" class="nav-link" active-class="active">随机预测</router-link>
           <router-link v-if="auth.isLoggedIn" to="/notices" class="nav-link" active-class="active">
@@ -131,13 +136,13 @@ async function handleCommand(command: string) {
         <div class="actions">
           <template v-if="auth.isLoggedIn">
             <el-dropdown trigger="click" @command="handleCommand">
-              <span class="user-trigger">
+              <button type="button" class="user-trigger" aria-label="打开用户菜单">
                 <el-avatar :size="28" :src="auth.user?.avatar || undefined" class="avatar">
                   {{ auth.displayName.slice(0, 1) }}
                 </el-avatar>
                 <span class="user-name">{{ auth.displayName }}</span>
                 <span v-if="auth.isVip" class="vip-tag">VIP</span>
-              </span>
+              </button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
@@ -147,6 +152,7 @@ async function handleCommand(command: string) {
                   <el-dropdown-item command="messages">消息中心</el-dropdown-item>
                   <el-dropdown-item command="earnings">我的收益</el-dropdown-item>
                   <el-dropdown-item command="purchased">我的解锁</el-dropdown-item>
+                  <el-dropdown-item command="picks">我的号码</el-dropdown-item>
                   <el-dropdown-item command="creator">创作者中心</el-dropdown-item>
                   <el-dropdown-item command="publish">发布预测</el-dropdown-item>
                   <el-dropdown-item v-if="auth.isStaff" command="admin">管理后台</el-dropdown-item>
@@ -162,7 +168,7 @@ async function handleCommand(command: string) {
       </div>
     </header>
 
-    <main class="site-main">
+    <main id="main-content" class="site-main">
       <router-view />
     </main>
 
@@ -175,6 +181,7 @@ async function handleCommand(command: string) {
           </p>
         </div>
         <span class="footer-links">
+          <router-link to="/legal/disclaimer">免责声明</router-link>
           <router-link to="/feedback">意见反馈</router-link>
         </span>
       </div>
@@ -183,172 +190,47 @@ async function handleCommand(command: string) {
 </template>
 
 <style scoped>
-.site-shell {
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
+.site-shell { display: flex; min-height: 100%; flex-direction: column; }
+.site-header { position: sticky; top: 0; z-index: 100; background: #ffffffed; backdrop-filter: blur(16px); border-bottom: 1px solid var(--border-soft); }
+.header-inner { display: flex; align-items: center; gap: 28px; max-width: 1248px; margin: 0 auto; padding: 0 32px; min-height: 80px; }
+.brand { display: flex; flex-shrink: 0; align-items: center; gap: 11px; }
+.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--brand-grad); color: #fff; font-size: 20px; font-weight: 650; box-shadow: 0 4px 10px #3563e91c; }
+.brand-copy { display: flex; flex-direction: column; gap: 5px; }
+.brand-text { font-size: 18px; font-weight: 750; letter-spacing: .04em; }
+.brand-caption { font-size: 9px; color: var(--text-sub); letter-spacing: .08em; }
+.nav { display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; min-width: 0; }
+.nav-link { position: relative; flex-shrink: 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; white-space: nowrap; color: var(--text-sub); transition: background .2s, color .2s; }
+.nav-link:hover { color: var(--brand); background: var(--surface-soft); }
+.nav-link.active { color: var(--brand); background: var(--el-color-primary-light-9); font-weight: 600; }
+.unread-dot { display: inline-block; min-width: 16px; padding: 0 5px; margin-left: 3px; border-radius: 8px; background: var(--brand); color: white; font-size: 10px; line-height: 16px; text-align: center; }
+.actions { display: flex; align-items: center; flex-shrink: 0; }
+.actions > .el-button { height: 38px; font-size: 12px; padding: 0 18px; }
+.user-trigger { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border-soft); border-radius: 24px; background: white; font: inherit; cursor: pointer; }
+.avatar { background: var(--brand); color: #fff; font-size: 13px; }
+.user-name { max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-main); }
+.vip-tag { padding: 1px 5px; border-radius: 5px; color: #8b5b1b; background: #faedcf; font-size: 10px; }
+.site-main { flex: 1; width: 100%; max-width: 1248px; margin: 0 auto; padding: 32px 32px 56px; }
+.site-footer { border-top: 1px solid var(--border-soft); background: #ffffff; }
+.footer-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; max-width: 1248px; margin: 0 auto; padding: 28px 32px; }
+.footer-left { max-width: 700px; }
+.footer-brand { margin: 0 0 10px; font-size: 12px; font-weight: 600; }
+.footer-disclaimer { margin: 0; color: var(--text-sub); font-size: 11px; line-height: 1.9; }
+.footer-links { display: flex; flex-shrink: 0; gap: 20px; color: var(--text-sub); font-size: 11px; }
+.footer-links a:hover { color: var(--brand); }
+@media (max-width: 1180px) {
+  .header-inner { flex-wrap: wrap; gap: 0; padding-top: 16px; }
+  .brand { margin-bottom: 14px; }
+  .actions { margin-left: auto; margin-bottom: 14px; }
+  .nav { order: 3; flex-basis: 100%; justify-content: flex-start; overflow-x: auto; gap: 6px; padding-bottom: 10px; scrollbar-width: thin; }
 }
-
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-soft);
-}
-
-.header-inner {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 64px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 17px;
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: var(--brand-grad);
-  color: #fff;
-  font-size: 15px;
-}
-
-.nav {
-  display: flex;
-  gap: 24px;
-  flex: 1;
-}
-
-.nav-link {
-  position: relative;
-  font-size: 14px;
-  color: var(--text-sub);
-  padding: 6px 0;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s;
-}
-
-.unread-dot {
-  display: inline-block;
-  min-width: 16px;
-  height: 16px;
-  margin-left: 4px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: #f56c6c;
-  color: #fff;
-  font-size: 11px;
-  line-height: 16px;
-  text-align: center;
-  vertical-align: 1px;
-}
-
-.nav-link:hover {
-  color: var(--brand);
-}
-
-.nav-link.active {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.user-trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  outline: none;
-}
-
-.avatar {
-  background: var(--brand);
-  color: #fff;
-  font-size: 13px;
-}
-
-.user-name {
-  font-size: 14px;
-  color: var(--text-main);
-}
-
-.vip-tag {
-  margin-left: 2px;
-  padding: 0 5px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #d9982b, #e4b45c);
-  color: #fff;
-  font-size: 10px;
-  line-height: 16px;
-  letter-spacing: 0.5px;
-}
-
-.site-main {
-  flex: 1;
-  width: 100%;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 32px 24px 56px;
-}
-
-.site-footer {
-  border-top: 1px solid var(--border-soft);
-  background: #fff;
-}
-
-.footer-inner {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 22px 24px;
-  font-size: 13px;
-  color: var(--text-sub);
-}
-
-.footer-left {
-  max-width: 640px;
-}
-
-.footer-brand {
-  margin: 0 0 6px;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.footer-disclaimer {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.footer-links {
-  display: flex;
-  gap: 18px;
-}
-
-.footer-links a:hover {
-  color: var(--brand);
+@media (max-width: 640px) {
+  .header-inner { padding: 14px 18px 0; }
+  .brand-mark { width: 34px; height: 34px; font-size: 18px; }
+  .brand-text { font-size: 16px; }
+  .brand-caption { font-size: 8px; }
+  .nav-link { padding: 8px 12px; font-size: 12px; }
+  .site-main { padding: 20px 16px 36px; }
+  .footer-inner { flex-direction: column; gap: 18px; padding: 24px 20px; }
+  .user-name { max-width: 60px; }
 }
 </style>

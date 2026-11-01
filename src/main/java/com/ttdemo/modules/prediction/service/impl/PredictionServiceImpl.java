@@ -38,6 +38,8 @@ import com.ttdemo.modules.user.mapper.SysUserMapper;
 import com.ttdemo.security.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -62,6 +64,10 @@ public class PredictionServiceImpl implements PredictionService {
     private static final Set<String> ITEM_TYPES = Set.of(
             "RED_SINGLE", "RED_MULTI", "DAN", "KILL", "BLUE_SINGLE",
             "SUM_RANGE", "SPAN", "ODD_EVEN", "BIG_SMALL", "FORM_COMBO", "AI_SCORE");
+
+    /** 号码型预测项：itemValue 必须是一组落在号码池内的整数 */
+    private static final Set<String> NUMBER_TYPES = Set.of(
+            "RED_SINGLE", "RED_MULTI", "DAN", "KILL", "BLUE_SINGLE");
 
     private static final Map<String, String> PLAY_TYPE_NAMES = Map.of(
             "SINGLE", "单式推荐", "MULTI", "复式推荐", "DAN", "胆码推荐",
@@ -99,6 +105,7 @@ public class PredictionServiceImpl implements PredictionService {
     private final PointService pointService;
     private final PromotionMapper promotionMapper;
     private final MessageService messageService;
+    private final ObjectMapper objectMapper;
 
     public PredictionServiceImpl(PrdPredictionMapper predictionMapper, PrdPredictionItemMapper itemMapper,
                                  PrdAuditRecordMapper auditRecordMapper, LotIssueMapper issueMapper,
@@ -110,7 +117,8 @@ public class PredictionServiceImpl implements PredictionService {
                                  AuditLogService auditLogService, AesCrypto aesCrypto,
                                  PointService pointService,
                                  PromotionMapper promotionMapper,
-                                 MessageService messageService) {
+                                 MessageService messageService,
+                                 ObjectMapper objectMapper) {
         this.messageService = messageService;
         this.pointService = pointService;
         this.promotionMapper = promotionMapper;
@@ -130,6 +138,7 @@ public class PredictionServiceImpl implements PredictionService {
         this.configService = configService;
         this.auditLogService = auditLogService;
         this.aesCrypto = aesCrypto;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -153,7 +162,7 @@ public class PredictionServiceImpl implements PredictionService {
             throw new BizException(ResultCode.ISSUE_CLOSED);
         }
         checkQuota(creator.getId(), issue.getId());
-        validateItems(request.items());
+        validateItems(request.typeCode(), request.items());
 
         PriceCalculator.Quote quote = quoteOf(creator.getId(), request.playType());
         int price = request.pricePoints() == null ? quote.suggestPrice() : request.pricePoints();
@@ -215,7 +224,7 @@ public class PredictionServiceImpl implements PredictionService {
         if (LocalDateTime.now().isAfter(issue.getSaleEndTime())) {
             throw new BizException(ResultCode.STATE_CONFLICT, "已过停售时间，不可编辑");
         }
-        validateItems(request.items());
+        validateItems(request.typeCode(), request.items());
 
         CreCreator creator = creatorMapper.selectById(prediction.getCreatorId());
         PriceCalculator.Quote quote = quoteOf(creator.getId(), request.playType());
@@ -362,10 +371,10 @@ public class PredictionServiceImpl implements PredictionService {
         List<PrdPredictionItem> items = itemMapper.selectList(new LambdaQueryWrapper<PrdPredictionItem>()
                 .eq(PrdPredictionItem::getPredictionId, id)
                 .orderByAsc(PrdPredictionItem::getSortNo));
+        // 免费预测整篇公开，付费预测只下发标记为免费的那几项
         List<PredictionDtos.FreeItem> freeItems = items.stream()
-                .filter(i -> i.getIsFree() != null && i.getIsFree() == 1)
-                .map(i -> new PredictionDtos.FreeItem(i.getItemType(),
-                        i.getItemLabel() == null ? i.getItemValue() : i.getItemLabel()))
+                .filter(i -> prediction.isFree() || (i.getIsFree() != null && i.getIsFree() == 1))
+                .map(i -> new PredictionDtos.FreeItem(i.getItemType(), i.getItemLabel(), i.getItemValue()))
                 .collect(Collectors.toList());
 
         LotIssue issue = issueMapper.selectById(prediction.getIssueId());
@@ -376,14 +385,26 @@ public class PredictionServiceImpl implements PredictionService {
             hitInfo = buildHitInfo(prediction, items, visible);
         }
 
-        // 浏览量 +1（简化同步累加；生产应走 Redis 聚合后落库）
+        // 浏览量 +1 用原子自增：整行 update 会把并发写入的 buyerCount / status 覆盖回旧值
         prediction.setViewCount((prediction.getViewCount() == null ? 0 : prediction.getViewCount()) + 1);
-        predictionMapper.updateById(prediction);
+        predictionMapper.update(null, new LambdaUpdateWrapper<PrdPrediction>()
+                .eq(PrdPrediction::getId, prediction.getId())
+                .setSql("view_count = view_count + 1"));
 
         int itemsFree = (int) items.stream().filter(i -> i.getIsFree() != null && i.getIsFree() == 1).count();
         String lockedHint = String.format("已解锁 %d 人，正文含 %d 个号码项与完整分析",
                 prediction.getBuyerCount() == null ? 0 : prediction.getBuyerCount(),
                 Math.max(0, items.size() - itemsFree));
+
+        // 逐项视图：免费项与已解锁项给号码，付费未解锁项只给个数，前端画占位球
+        List<PredictionDtos.ItemView> itemViews = items.stream().map(i -> {
+            boolean free = prediction.isFree() || (i.getIsFree() != null && i.getIsFree() == 1);
+            boolean locked = !visible && !free;
+            return new PredictionDtos.ItemView(i.getItemType(), i.getItemLabel(),
+                    locked ? null : i.getItemValue(),
+                    NUMBER_TYPES.contains(i.getItemType()) ? countNumbers(i.getItemValue()) : 0,
+                    free, locked);
+        }).collect(Collectors.toList());
 
         return new PredictionDtos.Detail(prediction.getId(), prediction.getPredictionNo(),
                 prediction.getTitle(), prediction.getPlayType(), playTypeName(prediction.getPlayType()),
@@ -393,7 +414,7 @@ public class PredictionServiceImpl implements PredictionService {
                 new PredictionDtos.PriceBreakdown(prediction.getPriceBase(), prediction.getPriceCoefficient(),
                         String.format("基础价%d × 准确度系数%s", prediction.getPriceBase(),
                                 prediction.getPriceCoefficient().stripTrailingZeros().toPlainString())),
-                prediction.getSummary(), freeItems,
+                prediction.getSummary(), freeItems, itemViews,
                 visible ? prediction.getContentHtml() : null,
                 visible && prediction.getContentImages() != null
                         ? Arrays.asList(prediction.getContentImages().split(",")) : List.of(),
@@ -704,7 +725,12 @@ public class PredictionServiceImpl implements PredictionService {
         }
     }
 
-    private void validateItems(List<PredictionDtos.ItemRequest> items) {
+    /**
+     * 预测项校验：除了类型与免费比例，还必须校验取值本身。
+     * 否则可以提交「双色球红球 99,100,101」「和值区间 abc」这类内容：
+     * 结算时必然不中，还会让 HitJudge 走异常分支，判定结果失去意义。
+     */
+    private void validateItems(String typeCode, List<PredictionDtos.ItemRequest> items) {
         if (items == null || items.isEmpty()) {
             throw new BizException(ResultCode.ITEM_EMPTY);
         }
@@ -726,6 +752,126 @@ public class PredictionServiceImpl implements PredictionService {
         if (freeCount * 5 > items.size() * 2) {
             throw new BizException(ResultCode.FREE_ITEM_RATIO_INVALID);
         }
+
+        int[] mainPool = groupPool(typeCode, 0, 1, 33);
+        int[] subPool = groupPool(typeCode, 1, 1, 16);
+        for (PredictionDtos.ItemRequest item : items) {
+            validateItemValue(item, mainPool, subPool);
+        }
+    }
+
+    private void validateItemValue(PredictionDtos.ItemRequest item, int[] mainPool, int[] subPool) {
+        String type = item.itemType();
+        String value = item.itemValue() == null ? "" : item.itemValue().trim();
+        if (value.isEmpty()) {
+            throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 的取值不能为空");
+        }
+        if (NUMBER_TYPES.contains(type)) {
+            List<Integer> numbers = parseNumberList(value);
+            if (numbers.isEmpty()) {
+                throw new BizException(ResultCode.ITEM_FORMAT_INVALID,
+                        type + " 需填号码，如 03,05,12（用逗号或空格分隔）");
+            }
+            if (numbers.size() > 20) {
+                throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 号码不能超过 20 个");
+            }
+            if (new java.util.HashSet<>(numbers).size() != numbers.size()) {
+                throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 号码不可重复");
+            }
+            int[] pool = "BLUE_SINGLE".equals(type) && subPool != null ? subPool : mainPool;
+            for (Integer n : numbers) {
+                if (n < pool[0] || n > pool[1]) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID,
+                            type + " 号码 " + n + " 超出范围 " + pool[0] + "-" + pool[1]);
+                }
+            }
+            return;
+        }
+        switch (type) {
+            case "SUM_RANGE" -> {
+                String[] parts = value.split("[-~]");
+                if (parts.length != 2 || !parts[0].trim().matches("\\d+") || !parts[1].trim().matches("\\d+")) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID, "和值区间格式应为 90-115");
+                }
+                int lo = Integer.parseInt(parts[0].trim());
+                int hi = Integer.parseInt(parts[1].trim());
+                if (lo > hi) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID, "和值区间下界不能大于上界");
+                }
+            }
+            case "SPAN" -> {
+                if (!value.matches("\\d+")) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID, "跨度应为数字，如 18");
+                }
+            }
+            case "ODD_EVEN", "BIG_SMALL" -> {
+                if (!value.matches("\\d+\\s*:\\s*\\d+")) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 格式应为 4:2");
+                }
+            }
+            case "FORM_COMBO", "AI_SCORE" -> {
+                try {
+                    JsonNode node = objectMapper.readTree(value);
+                    if (node == null || node.isNull() || !node.isObject()) {
+                        throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 需为 JSON 对象");
+                    }
+                } catch (BizException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new BizException(ResultCode.ITEM_FORMAT_INVALID, type + " 不是合法 JSON");
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    /** 取彩种第 index 组的号码池范围，配置缺失时用默认值 */
+    private int[] groupPool(String typeCode, int index, int defaultMin, int defaultMax) {
+        try {
+            var type = lotteryService.requireType(typeCode);
+            JsonNode groups = objectMapper.readTree(type.getPlayConfig()).get("groups");
+            if (groups != null && groups.isArray() && groups.size() > index) {
+                int lo = groups.get(index).path("min").asInt(defaultMin);
+                int hi = groups.get(index).path("max").asInt(defaultMax);
+                if (hi > lo) {
+                    return new int[]{lo, hi};
+                }
+            }
+        } catch (Exception ignored) {
+            // 配置异常时不阻断发布，交由后续开奖判定兜底
+        }
+        return new int[]{defaultMin, defaultMax};
+    }
+
+    /** 号码个数：只数片段不解析数值，供未解锁时画等量占位球 */
+    private int countNumbers(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (String part : raw.split("[,\\s]+")) {
+            if (!part.isBlank()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private List<Integer> parseNumberList(String raw) {
+        List<Integer> list = new java.util.ArrayList<>();
+        for (String part : raw.split("[,\\s]+")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            try {
+                list.add(Integer.parseInt(part.trim()));
+            } catch (NumberFormatException e) {
+                throw new BizException(ResultCode.ITEM_FORMAT_INVALID,
+                        "号码格式不正确：" + part + "（应为 1-99 的整数）");
+            }
+        }
+        return list;
     }
 
     private void saveItem(Long predictionId, PredictionDtos.ItemRequest item, int sortNo) {
@@ -801,10 +947,10 @@ public class PredictionServiceImpl implements PredictionService {
         }
 
         List<Long> predIds = records.stream().map(PrdPrediction::getId).collect(Collectors.toList());
+        // 取全部预测项（不只免费项）：列表要给出「免费几项 / 共几项」，广场才能只露免费号码、付费项只给数量
         Map<Long, List<PrdPredictionItem>> itemMap = new LinkedHashMap<>();
         for (PrdPredictionItem item : itemMapper.selectList(new LambdaQueryWrapper<PrdPredictionItem>()
                 .in(PrdPredictionItem::getPredictionId, predIds)
-                .eq(PrdPredictionItem::getIsFree, 1)
                 .orderByAsc(PrdPredictionItem::getSortNo))) {
             itemMap.computeIfAbsent(item.getPredictionId(), k -> new ArrayList<>()).add(item);
         }
@@ -814,9 +960,10 @@ public class PredictionServiceImpl implements PredictionService {
             CreCreator creator = creators.get(p.getCreatorId());
             ScoreCreatorAccuracy acc = accuracies.get(p.getCreatorId());
             SysUser creatorUser = creator == null ? null : userMapper.selectById(creator.getUserId());
-            List<PredictionDtos.FreeItem> freeItems = itemMap.getOrDefault(p.getId(), List.of()).stream()
-                    .map(i -> new PredictionDtos.FreeItem(i.getItemType(),
-                            i.getItemLabel() == null ? i.getItemValue() : i.getItemLabel()))
+            List<PrdPredictionItem> allItems = itemMap.getOrDefault(p.getId(), List.of());
+            List<PredictionDtos.FreeItem> freeItems = allItems.stream()
+                    .filter(i -> p.isFree() || (i.getIsFree() != null && i.getIsFree() == 1))
+                    .map(i -> new PredictionDtos.FreeItem(i.getItemType(), i.getItemLabel(), i.getItemValue()))
                     .collect(Collectors.toList());
             LotIssue issue = issueMapper.selectById(p.getIssueId());
             list.add(new PredictionDtos.ListItem(p.getId(), p.getPredictionNo(), p.getTitle(),
@@ -826,7 +973,7 @@ public class PredictionServiceImpl implements PredictionService {
                             String.format("基础价%d × 准确度系数%s", p.getPriceBase(),
                                     p.getPriceCoefficient() == null ? "1.00"
                                             : p.getPriceCoefficient().stripTrailingZeros().toPlainString())),
-                    p.getSummary(), freeItems,
+                    p.getSummary(), freeItems, allItems.size(), freeItems.size(),
                     new PredictionDtos.CreatorBrief(p.getCreatorId(),
                             creator == null ? null : creator.getPenName(),
                             creatorUser == null ? null : creatorUser.getAvatar(),

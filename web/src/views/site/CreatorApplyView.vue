@@ -71,7 +71,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div v-loading="loading" class="page">
+  <div v-loading="loading" class="page ui-page view-creator-apply">
     <h1>创作者认证</h1>
 
     <el-steps :active="profile?.status === 2 ? 3 : realname.auditStatus === 1 ? 2 : 1" simple class="steps">
@@ -188,7 +188,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
 h1 { font-size: 22px; margin: 0 0 16px; }
 .steps { margin-bottom: 16px; }
 .block { margin-bottom: 14px; border-radius: 12px; }
@@ -196,7 +195,7 @@ h1 { font-size: 22px; margin: 0 0 16px; }
 .t { font-weight: 600; font-size: 14px; }
 .form { max-width: 560px; margin-top: 12px; }
 .mb { margin-bottom: 12px; }
-.tip { font-size: 12px; color: var(--el-text-color-secondary); margin: 10px 0 0; }
+.tip { font-size: 12px; color: var(--text-sub); margin: 10px 0 0; }
 .actions { margin-top: 14px; display: flex; gap: 10px; }
-.rule ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.9; color: var(--el-text-color-secondary); }
+.rule ul { margin: 8px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.9; color: var(--text-sub); }
 </style>

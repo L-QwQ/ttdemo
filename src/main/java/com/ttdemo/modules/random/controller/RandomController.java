@@ -45,6 +45,12 @@ public class RandomController {
         return R.ok(randomPredictionService.history(typeCode, limit));
     }
 
+    /** 复式规格：每组单注号码个数与复式可选范围，用于渲染号码个数选择器 */
+    @GetMapping("/bet-options")
+    public R<RandomDtos.BetSpec> betOptions(@RequestParam String typeCode) {
+        return R.ok(randomPredictionService.betSpec(typeCode));
+    }
+
     @PostMapping("/generate")
     public R<RandomDtos.GenerateResult> generate(@RequestBody RandomDtos.GenerateRequest request) {
         return R.ok(randomPredictionService.generate(request, currentUserId()));

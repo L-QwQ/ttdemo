@@ -51,7 +51,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-earnings">
     <header class="head">
       <div>
         <h1>我的收益</h1>
@@ -116,7 +116,7 @@ onMounted(load)
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
 h1 { margin: 0 0 4px; font-size: 22px; }
 .sub { margin: 0; font-size: 13px; color: var(--text-sub); }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin-bottom: 16px; }
 .card { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
 .card span { font-size: 12px; color: var(--text-sub); }
 .card strong { font-size: 20px; }

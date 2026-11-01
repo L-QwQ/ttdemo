@@ -106,7 +106,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="rewards" v-loading="loading">
+  <div class="rewards ui-page view-reward" v-loading="loading">
     <header class="head">
       <div>
         <h1>积分兑换</h1>
@@ -285,7 +285,7 @@ h1 { margin: 0 0 4px; font-size: 22px; }
 .sub { margin: 0; font-size: 13px; color: var(--text-sub); }
 .mb { margin-bottom: 4px; }
 
-.status-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px 18px; }
+.status-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px 18px; }
 .status-item { display: flex; flex-direction: column; gap: 2px; }
 .status-item span { font-size: 12px; color: var(--text-sub); }
 .status-item strong { font-size: 20px; }
@@ -293,7 +293,7 @@ h1 { margin: 0 0 4px; font-size: 22px; }
 .status-item em { font-style: normal; font-size: 11px; color: var(--text-sub); }
 
 .section { margin: 18px 0 10px; font-size: 15px; padding-left: 8px; border-left: 3px solid var(--brand); }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 12px; }
 .item-card { background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; transition: box-shadow 0.2s, transform 0.2s; }
 .item-card:hover { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.07); transform: translateY(-2px); }
 .item-top { display: flex; justify-content: space-between; align-items: center; }
@@ -317,6 +317,6 @@ h1 { margin: 0 0 4px; font-size: 22px; }
 .dialog-line strong { color: var(--text-main); }
 .dialog-total { margin: 4px 0 0; font-size: 14px; }
 .dialog-total strong { font-size: 20px; color: var(--brand); }
-.warn { color: #d92b2b; font-size: 12px; }
+.warn { color: var(--brand); font-size: 12px; }
 .dialog-tip { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-sub); }
 </style>

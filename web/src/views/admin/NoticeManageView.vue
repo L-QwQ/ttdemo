@@ -213,7 +213,7 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card ui-page view-notice-manage">
     <h2 class="page-title">通知公告</h2>
     <p class="page-desc">公告发布给全部启用用户，通知可定向发送给指定用户；草稿发布前可修改</p>
 
@@ -238,7 +238,7 @@ onMounted(fetchList)
       <el-button type="success" @click="openCreate">发布公告 / 通知</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
       <el-table-column label="类型" width="90">
@@ -378,12 +378,6 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
 .muted {
   color: #a8b0be;
 }

@@ -2,7 +2,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { lotteryApi } from '@/api/lottery'
-import { randomApi, type HistorySummary, type RandomMethodVO, type RandomQuota, type RandomResult } from '@/api/random'
+import { pickApi } from '@/api/pick'
+import {
+  randomApi,
+  type BetSpec,
+  type HistorySummary,
+  type RandomMethodVO,
+  type RandomQuota,
+  type RandomResult,
+} from '@/api/random'
 import { useAuthStore } from '@/stores/auth'
 import type { LotteryType } from '@/types/lottery'
 import { formatDateTime } from '@/utils/format'
@@ -24,9 +32,16 @@ const historySize = ref(30)
 const sumMin = ref<number | undefined>(undefined)
 const sumMax = ref<number | undefined>(undefined)
 
+/** 投注方式：单式 / 复式。复式按各组号码个数算注数与金额 */
+const betMode = ref<'SINGLE' | 'MULTI'>('SINGLE')
+const betSpec = ref<BetSpec | null>(null)
+/** 与 betSpec.groups 一一对应的复式号码个数 */
+const multiPicks = ref<number[]>([])
+
 const currentType = computed(() => types.value.find((t) => t.code === typeCode.value))
 const currentMethod = computed(() => methods.value.find((m) => m.code === method.value))
 const isSumTarget = computed(() => method.value === 'SUM_TARGET')
+const multiSupported = computed(() => !!betSpec.value?.supported)
 
 /** 按 BASIC / STATS / MYSTIC 分组展示，顺序固定 */
 const methodGroups = computed(() => {
@@ -60,6 +75,47 @@ const willConsumeQuota = computed(() => {
   return Boolean(q && q.gradeEnabled && !q.vip && currentMethod.value?.vip && q.remainToday > 0)
 })
 
+/** 组合数 C(n,k)，与后端注数算法一致 */
+function comb(n: number, k: number): number {
+  if (n <= 0 || k < 0 || k > n) return 1
+  const r = Math.min(k, n - k)
+  let value = 1
+  for (let i = 0; i < r; i += 1) value = (value * (n - i)) / (i + 1)
+  return Math.round(value)
+}
+
+/** 生成前的注数/金额预览：复式注数 = 各组组合数相乘 */
+const betPreview = computed(() => {
+  const spec = betSpec.value
+  if (!spec) return null
+  const picks = spec.groups.map((g, i) =>
+    betMode.value === 'MULTI' ? Math.min(g.max, Math.max(g.min, multiPicks.value[i] ?? g.standard)) : g.standard,
+  )
+  const betCount = spec.groups.reduce((acc, g, i) => acc * comb(picks[i] ?? g.standard, g.standard), 1)
+  const multi = picks.some((p, i) => p > (spec.groups[i]?.standard ?? p))
+  return {
+    shape: picks.join('+'),
+    betCount,
+    amount: betCount * spec.unitPrice,
+    multi,
+    unitPrice: spec.unitPrice,
+  }
+})
+
+async function loadBetSpec() {
+  if (!typeCode.value) return
+  try {
+    const spec = await randomApi.betOptions(typeCode.value)
+    betSpec.value = spec
+    multiPicks.value = spec.groups.map((g) => g.defaultValue)
+    if (!spec.supported) betMode.value = 'SINGLE'
+  } catch {
+    betSpec.value = null
+    multiPicks.value = []
+    betMode.value = 'SINGLE'
+  }
+}
+
 async function loadMethods() {
   methods.value = await randomApi.methods(typeCode.value)
 }
@@ -83,7 +139,14 @@ async function generate() {
       historySize: historySize.value,
       sumMin: isSumTarget.value ? sumMin.value : undefined,
       sumMax: isSumTarget.value ? sumMax.value : undefined,
+      betMode: betMode.value,
+      multiMain: multiPicks.value[0],
+      multiSub: multiPicks.value[1],
     })
+    // 新结果重新生成，清掉上一轮的「已保存」标记
+    savedIndexes.value = []
+    // 新结果重新生成，清掉上一轮的「已保存」标记
+    savedIndexes.value = []
     // 会员方法会消耗免费次数，生成成功后同步最新额度
     if (result.value?.sets?.[0]) {
       await Promise.all([loadQuota(), loadMethods()])
@@ -127,6 +190,36 @@ function ballClass(groupKey: string) {
   return groupKey === 'BLUE' ? 'ball blue' : 'ball red'
 }
 
+/** 预测项类型中文名，与发布页下拉保持一致 */
+const ITEM_TYPE_NAMES: Record<string, string> = {
+  RED_SINGLE: '单式号码',
+  RED_MULTI: '复式号码',
+  BLUE_SINGLE: '蓝球/后区',
+  DAN: '胆码',
+  KILL: '杀号',
+  SUM_RANGE: '和值区间',
+  SPAN: '跨度',
+  ODD_EVEN: '奇偶比',
+  BIG_SMALL: '大小比',
+}
+const NUMBER_ITEM_TYPES = new Set(['RED_SINGLE', 'RED_MULTI', 'BLUE_SINGLE', 'DAN', 'KILL'])
+
+function itemTypeName(type: string) {
+  return ITEM_TYPE_NAMES[type] ?? type
+}
+
+/** 号码串用空格分隔更好读；形态类（和值/跨度/奇偶比）原样展示 */
+function itemValueText(item: { itemType: string; itemValue: string }) {
+  return NUMBER_ITEM_TYPES.has(item.itemType) ? item.itemValue.replace(/,/g, ' ') : item.itemValue
+}
+
+/** label 只在有额外信息时展示，避免和值「387-427 和值 387-427」这样重复两遍 */
+function itemNote(item: { itemType: string; itemLabel: string }) {
+  const label = item.itemLabel?.trim()
+  if (!label || label === itemTypeName(item.itemType)) return ''
+  return label
+}
+
 /** 把当前结果带入发布页 */
 function useForPublish() {
   const set = result.value?.sets[0]
@@ -137,16 +230,67 @@ function useForPublish() {
     return
   }
   const main = set.groups[0]?.numbers.join(' ') ?? ''
+  const multi = set.bet?.mode === 'MULTI'
   const draft = {
     typeCode: result.value.typeCode,
     methodName: set.methodName,
     items: set.items,
-    title: `${result.value.typeName}随机参考：${set.methodName}策略生成`,
-    summary: `本组号码由「${set.methodName}」算法随机生成，主号 ${main}，和值 ${set.metrics.sum}，跨度 ${set.metrics.span}，奇偶比 ${set.metrics.oddEven}，仅供参考。`,
+    betLabel: set.bet?.label ?? '',
+    title: `${result.value.typeName}${multi ? '复式' : ''}随机参考：${set.methodName}生成`,
+    summary: `本注由「${set.methodName}」生成${set.bet?.label ?? ''}，主号 ${main}，和值 ${set.metrics.sum}、跨度 ${set.metrics.span}，仅供参考。`,
   }
   sessionStorage.setItem('ttdemo.randomDraft', JSON.stringify(draft))
   ElMessage.success('已带入发布页，请补充正文后提交')
   router.push('/publish')
+}
+
+const savingIndex = ref(-1)
+const savedIndexes = ref<number[]>([])
+/** 与后端 PickServiceImpl.MAX_BETS 保持一致 */
+const MAX_PICK_BETS = 5000
+
+/** 把某一注号码存进「我的号码」，会员功能 */
+async function saveToPicks(set: RandomResult['sets'][number], index: number) {
+  if (!auth.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    router.push({ name: 'login', query: { redirect: '/random' } })
+    return
+  }
+  if (!quota.value?.vip) {
+    ElMessage.warning('号码本与兑奖为会员专享，开通后即可保存')
+    router.push('/my/picks')
+    return
+  }
+  if (!result.value) return
+  const main = set.groups[0]?.numbers ?? []
+  const sub = set.groups[1]?.numbers ?? []
+  // 复式号码池存进号码本后，兑奖会按 C(n,k) 拆注逐注判定，注数过多会被后端拒绝，这里先拦一道
+  const bets = set.bet?.betCount ?? 1
+  if (bets > MAX_PICK_BETS) {
+    ElMessage.warning(`本注拆出 ${bets} 注，超过号码本上限 ${MAX_PICK_BETS} 注，请改选更少的号码`)
+    return
+  }
+  savingIndex.value = index
+  try {
+    const saved = await pickApi.save({
+      typeCode: result.value.typeCode,
+      redNumbers: main.join(','),
+      blueNumbers: sub.length ? sub.join(',') : undefined,
+      remark: bets > 1 ? `${set.methodName}生成 · 复式 ${bets} 注` : `${set.methodName}生成`,
+    })
+    if (!savedIndexes.value.includes(index)) {
+      savedIndexes.value = [...savedIndexes.value, index]
+    }
+    ElMessage.success(
+      bets > 1
+        ? `已保存复式 ${bets} 注到「我的号码」第 ${saved.issueNo ?? '—'} 期，开奖后自动兑奖`
+        : `已保存到「我的号码」第 ${saved.issueNo ?? '—'} 期，开奖后自动兑奖`,
+    )
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '保存失败')
+  } finally {
+    savingIndex.value = -1
+  }
 }
 
 watch(typeCode, async () => {
@@ -154,7 +298,7 @@ watch(typeCode, async () => {
   sumMax.value = undefined
   showHistory.value = false
   result.value = null
-  await Promise.all([loadMethods(), loadHistory()])
+  await Promise.all([loadMethods(), loadHistory(), loadBetSpec()])
   const available = methods.value.find((m) => m.code === method.value)?.available
   if (!available) {
     method.value = 'PURE_RANDOM'
@@ -166,12 +310,12 @@ onMounted(async () => {
   types.value = all.filter((t) => t.status === 1)
   const first = types.value[0]
   if (first) typeCode.value = first.code
-  await Promise.all([loadMethods(), loadHistory(), loadQuota()])
+  await Promise.all([loadMethods(), loadHistory(), loadQuota(), loadBetSpec()])
 })
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-random">
     <header class="head">
       <div>
         <h1>随机预测生成器</h1>
@@ -228,6 +372,13 @@ onMounted(async () => {
       <main v-loading="loading" class="result">
         <div class="param-bar">
           <div class="param">
+            <label>投注方式</label>
+            <el-radio-group v-model="betMode" size="small">
+              <el-radio-button value="SINGLE">单式</el-radio-button>
+              <el-radio-button value="MULTI" :disabled="!multiSupported">复式</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="param">
             <label>生成注数</label>
             <el-input-number v-model="count" :min="1" :max="5" size="small" />
           </div>
@@ -255,6 +406,21 @@ onMounted(async () => {
           本次将消耗 1 次免费试用，今日还剩 {{ quota?.remainToday }} 次
         </p>
 
+        <div v-if="betMode === 'MULTI' && betSpec?.supported" class="multi-bar">
+          <div v-for="(g, i) in betSpec.groups" :key="g.key" class="param">
+            <label>{{ g.name }}</label>
+            <el-input-number v-model="multiPicks[i]" :min="g.min" :max="g.max" size="small" />
+            <span class="param-hint">单注 {{ g.standard }} 个</span>
+          </div>
+          <span v-if="betPreview" class="bet-preview">
+            {{ betPreview.multi ? '复式' : '单式' }} {{ betPreview.shape }}
+            <b>{{ betPreview.betCount }}</b> 注 · <b>¥{{ betPreview.amount }}</b>
+            <em>（{{ betPreview.unitPrice }} 元/注）</em>
+          </span>
+          <span class="multi-note">{{ betSpec.note }}</span>
+        </div>
+        <p v-else-if="betSpec && !betSpec.supported" class="multi-note blocked">{{ betSpec.note }}</p>
+
         <div v-if="!result" class="empty-state">
           <p class="empty-title">还没有生成结果</p>
           <p class="empty-sub">
@@ -281,7 +447,31 @@ onMounted(async () => {
           </div>
 
           <div v-for="(set, index) in result.sets" :key="index" class="set-card">
-            <div v-if="result.sets.length > 1" class="set-index">第 {{ index + 1 }} 注</div>
+            <div class="set-head">
+              <span class="set-title">
+                {{ result.sets.length > 1 ? `第 ${index + 1} 注` : '本注号码' }}
+              </span>
+              <el-button
+                size="default"
+                class="save-btn"
+                :type="savedIndexes.includes(index) ? 'success' : 'primary'"
+                :plain="!quota?.vip || savedIndexes.includes(index)"
+                :loading="savingIndex === index"
+                @click="saveToPicks(set, index)"
+              >
+                <template v-if="savedIndexes.includes(index)">✓ 已保存到号码本</template>
+                <template v-else-if="quota?.vip">＋ 保存到我的号码</template>
+                <template v-else>＋ 开通会员后保存</template>
+              </el-button>
+            </div>
+
+            <div class="bet-bar" :class="{ multi: set.bet?.mode === 'MULTI' }">
+              <span class="bet-mode">{{ set.bet?.modeName ?? '单式' }}</span>
+              <span class="bet-shape">{{ set.groups.map((g) => g.numbers.length).join('+') }}</span>
+              <span class="bet-count"><b>{{ set.bet?.betCount ?? 1 }}</b> 注</span>
+              <span class="bet-amount">¥{{ set.bet?.amount ?? 0 }}</span>
+              <span class="bet-formula">{{ set.bet?.formula }}</span>
+            </div>
 
             <div v-for="g in set.groups" :key="g.key" class="group">
               <span class="group-name">{{ g.name }}</span>
@@ -295,20 +485,24 @@ onMounted(async () => {
               <span>跨度 <b>{{ set.metrics.span }}</b></span>
               <span>奇偶 <b>{{ set.metrics.oddEven }}</b></span>
               <span>大小 <b>{{ set.metrics.bigSmall }}</b></span>
+              <span v-if="set.bet?.mode === 'MULTI'" class="metrics-note">号码池整体指标，非单注口径</span>
             </div>
 
             <p class="reason">{{ set.reason }}</p>
 
             <details class="items">
-              <summary>查看可发布的结构化预测项（{{ set.items.length }} 项）</summary>
-              <ul>
-                <li v-for="(item, i) in set.items" :key="i">
-                  <el-tag size="small" effect="plain">{{ item.itemType }}</el-tag>
-                  <span class="item-value">{{ item.itemValue }}</span>
-                  <span class="item-label">{{ item.itemLabel }}</span>
-                  <el-tag v-if="item.isFree" size="small" type="success">免费</el-tag>
-                </li>
-              </ul>
+              <summary>
+                查看可发布的结构化预测项（{{ set.items.length }} 项）
+                <span class="items-hint">可直接带入发布页</span>
+              </summary>
+              <div class="item-list">
+                <div v-for="(item, i) in set.items" :key="i" class="item-row">
+                  <span class="item-type">{{ itemTypeName(item.itemType) }}</span>
+                  <span class="item-value">{{ itemValueText(item) }}</span>
+                  <span v-if="itemNote(item)" class="item-label">{{ itemNote(item) }}</span>
+                  <el-tag v-if="item.isFree" size="small" type="success" effect="plain">免费</el-tag>
+                </div>
+              </div>
             </details>
           </div>
 
@@ -362,18 +556,17 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .head h1 { margin: 0 0 6px; font-size: 22px; }
-.sub { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); max-width: 640px; line-height: 1.6; }
+.sub { margin: 0; font-size: 13px; color: var(--text-sub); max-width: 640px; line-height: 1.6; }
 .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
-.methods { background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; padding: 14px; }
+.methods { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px; }
 .panel-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 
-.quota-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 10px; }
-.quota-text { font-size: 12px; color: var(--el-text-color-regular); }
-.quota-text.on { color: #d9982b; font-weight: 600; }
-.almanac { margin-left: auto; font-size: 11px; color: var(--el-text-color-placeholder); letter-spacing: .5px; }
+.quota-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding: 10px 14px; background: #fff; border: 1px solid var(--border-soft); border-radius: 10px; }
+.quota-text { font-size: 12px; color: var(--text-main); }
+.quota-text.on { color: var(--gold); font-weight: 600; }
+.almanac { margin-left: auto; font-size: 11px; color: var(--text-sub); letter-spacing: .5px; }
 
 .method-group { margin-bottom: 6px; }
 .group-head { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
@@ -381,55 +574,84 @@ onMounted(async () => {
 .group-label.basic { border-left-color: #22b07d; }
 .group-label.stats { border-left-color: #3b6ef6; }
 .group-label.mystic { border-left-color: #a05cf0; }
-.group-sub { font-size: 10px; color: var(--el-text-color-placeholder); }
+.group-sub { font-size: 10px; color: var(--text-sub); }
 
 /* 方法胶囊：三列铺排，替代原先的长卡片 */
 .chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .chip {
   position: relative; display: flex; align-items: center; justify-content: center; gap: 3px;
   padding: 7px 4px; font-size: 12px; line-height: 1.2; text-align: center;
-  background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 8px;
+  background: #fff; border: 1px solid var(--border-soft); border-radius: 8px;
   cursor: pointer; transition: all .16s; white-space: nowrap; overflow: hidden;
 }
 .chip:hover { border-color: var(--el-color-primary-light-5); }
 .chip.active { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-weight: 600; }
 .chip.locked { opacity: .5; }
-.chip-vip { font-size: 9px; color: #d9982b; font-weight: 700; }
+.chip-vip { font-size: 9px; color: var(--gold); font-weight: 700; }
 .chip.active .chip-vip { color: var(--el-color-primary); }
 
-.method-hint { margin: 12px 0 0; padding: 8px 10px; font-size: 11px; line-height: 1.6; color: var(--el-text-color-secondary); background: var(--el-fill-color-lighter); border-radius: 8px; }
+.method-hint { margin: 12px 0 0; padding: 8px 10px; font-size: 11px; line-height: 1.6; color: var(--text-sub); background: var(--el-fill-color-lighter); border-radius: 8px; }
 .method-note { margin: 6px 0 0; font-size: 10px; color: var(--el-color-warning); }
 
 /* 参数条：置于右侧结果区顶部，横向一排 */
 .param-bar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 10px;
+  background: #fff; border: 1px solid var(--border-soft); border-radius: 10px;
   padding: 10px 14px; margin-bottom: 12px;
 }
 .param { display: flex; align-items: center; gap: 6px; }
-.param label { font-size: 12px; color: var(--el-text-color-regular); white-space: nowrap; }
+.param label { font-size: 12px; color: var(--text-main); white-space: nowrap; }
 .param :deep(.el-input-number) { width: 104px; }
-.param-dash { font-size: 12px; color: var(--el-text-color-placeholder); }
-.param-hint { font-size: 11px; color: var(--el-text-color-placeholder); }
+.param-dash { font-size: 12px; color: var(--text-sub); }
+.param-hint { font-size: 11px; color: var(--text-sub); }
 .param-hint.warn { color: var(--el-color-danger); }
 .run-btn { margin-left: auto; min-width: 118px; letter-spacing: 1px; }
-.run-hint { margin: -4px 0 10px; font-size: 11px; color: #d9982b; }
+.run-hint { margin: -4px 0 10px; font-size: 11px; color: var(--gold); }
+
+/* 复式：每组号码个数 + 注数金额预览 */
+.multi-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: #fffaf4; border: 1px solid #f6ddc3; border-radius: 10px;
+  padding: 10px 14px; margin: -2px 0 12px;
+}
+.multi-bar .param :deep(.el-input-number) { width: 92px; }
+.bet-preview { margin-left: auto; font-size: 12px; color: var(--text-main); }
+.bet-preview b { color: #d92b2b; font-size: 14px; font-variant-numeric: tabular-nums; }
+.bet-preview em { font-style: normal; font-size: 11px; color: var(--text-sub); }
+.multi-note { flex-basis: 100%; font-size: 11px; line-height: 1.6; color: var(--text-sub); }
+.multi-note.blocked { margin: -2px 0 12px; color: var(--el-color-warning); }
+
+/* 每注的投注信息条 */
+.bet-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 8px 12px; border-radius: 9px;
+  background: var(--el-fill-color-lighter); font-size: 12px; color: var(--text-sub);
+}
+.bet-bar.multi { background: #fff7ee; border: 1px solid #f7dfc6; }
+.bet-mode {
+  padding: 1px 7px; border-radius: 5px; background: #fff; border: 1px solid var(--border-soft);
+  font-weight: 600; color: var(--text-main);
+}
+.bet-bar.multi .bet-mode { color: #c2410c; border-color: #f5c99b; }
+.bet-shape { font-weight: 600; color: var(--text-main); font-variant-numeric: tabular-nums; }
+.bet-count b { color: var(--text-main); }
+.bet-amount { font-size: 14px; font-weight: 700; color: #d92b2b; font-variant-numeric: tabular-nums; }
+.bet-formula { font-size: 11px; color: var(--text-sub); }
 
 .result { min-height: 420px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 380px; gap: 10px; background: #fff; border: 1px dashed var(--el-border-color); border-radius: 12px; }
-.empty-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--el-text-color-regular); }
-.empty-sub { margin: 0; font-size: 12px; line-height: 1.9; color: var(--el-text-color-secondary); text-align: center; }
+.empty-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-main); }
+.empty-sub { margin: 0; font-size: 12px; line-height: 1.9; color: var(--text-sub); text-align: center; }
 .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
 .type-name { font-size: 15px; font-weight: 600; }
 .ml { margin-left: 6px; }
 .actions { display: flex; gap: 8px; }
 .set-card {
-  background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 12px;
+  background: #fff; border: 1px solid var(--border-soft); border-radius: 12px;
   padding: 16px 18px; margin-bottom: 12px;
 }
-.set-index { font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 8px; }
 .group { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
-.group-name { font-size: 12px; color: var(--el-text-color-secondary); width: 42px; flex: 0 0 auto; }
+.group-name { font-size: 12px; color: var(--text-sub); width: 42px; flex: 0 0 auto; }
 .balls { display: flex; gap: 8px; flex-wrap: wrap; }
 .ball {
   width: 38px; height: 38px; border-radius: 50%; display: inline-flex;
@@ -437,21 +659,34 @@ onMounted(async () => {
 }
 .ball.red { background: linear-gradient(135deg, #f56c6c, #e64a4a); }
 .ball.blue { background: linear-gradient(135deg, #4a90e2, #2f6fd0); }
-.metrics { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--el-text-color-secondary); margin: 10px 0 8px; }
+.metrics { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--text-sub); margin: 10px 0 8px; }
 .metrics b { color: var(--el-text-color-primary); font-size: 13px; }
+.metrics-note { color: var(--text-sub); opacity: .8; font-size: 11px; }
 .reason {
-  margin: 0; font-size: 12px; line-height: 1.7; color: var(--el-text-color-regular);
+  margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-main);
   background: var(--el-fill-color-lighter); border-radius: 8px; padding: 8px 12px;
 }
 .items { margin-top: 10px; font-size: 12px; }
 .items summary { cursor: pointer; color: var(--el-color-primary); }
-.items ul { margin: 8px 0 0; padding-left: 16px; }
-.items li { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
-.item-value { font-family: ui-monospace, monospace; }
-.item-label { color: var(--el-text-color-secondary); }
+.items-hint { margin-left: 8px; color: var(--text-sub); font-size: 11px; }
+.item-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.item-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 10px; border-radius: 8px; background: var(--el-fill-color-lighter);
+}
+.item-type { flex: 0 0 68px; color: var(--text-sub); }
+.item-value {
+  flex: 1 1 auto; min-width: 0; font-family: ui-monospace, monospace; line-height: 1.6;
+  color: var(--el-text-color-primary); word-break: break-all;
+}
+.item-label { color: var(--text-sub); }
+.set-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.set-title { font-size: 13px; font-weight: 600; color: var(--text-main); }
+.save-btn { font-weight: 600; letter-spacing: 0.5px; }
+.save-btn.el-button--primary:not(.is-plain) { box-shadow: 0 4px 12px rgba(217, 43, 43, 0.25); }
 .data-note { margin-top: 12px; }
 .source-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-top: 4px; }
 .his-table { margin-top: 8px; }
-.disclaimer { font-size: 11px; color: var(--el-text-color-placeholder); line-height: 1.7; margin-top: 8px; }
+.disclaimer { font-size: 11px; color: var(--text-sub); line-height: 1.7; margin-top: 8px; }
 @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
 </style>

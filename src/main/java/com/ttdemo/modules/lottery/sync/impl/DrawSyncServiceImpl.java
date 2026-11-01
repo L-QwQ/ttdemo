@@ -1,6 +1,7 @@
 package com.ttdemo.modules.lottery.sync.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.ttdemo.common.api.ResultCode;
 import com.ttdemo.common.exception.BizException;
 import com.ttdemo.modules.lottery.dto.IssueVO;
@@ -113,6 +114,7 @@ public class DrawSyncServiceImpl implements DrawSyncService {
         int updated = 0;
         int skipped = 0;
         int failed = 0;
+        int backfilled = 0;
         List<String> errors = new ArrayList<>();
 
         for (DrawRecord record : records) {
@@ -121,7 +123,16 @@ public class DrawSyncServiceImpl implements DrawSyncService {
                         .eq(LotIssue::getTypeCode, type.getCode())
                         .eq(LotIssue::getIssueNo, record.issueNo()));
                 if (existing != null && existing.isSettled()) {
-                    skipped++;
+                    // 已结算期次不允许再改开奖号码（否则结算结果与号码脱钩），
+                    // 但缺「销售额/奖池/奖项」这类纯展示字段时可以单独补齐
+                    if (needsExtraBackfill(existing)) {
+                        issueMapper.update(null, new LambdaUpdateWrapper<LotIssue>()
+                                .eq(LotIssue::getId, existing.getId())
+                                .set(LotIssue::getExtra, buildExtra(type, record)));
+                        backfilled++;
+                    } else {
+                        skipped++;
+                    }
                     continue;
                 }
                 validate(type, record);
@@ -132,7 +143,10 @@ public class DrawSyncServiceImpl implements DrawSyncService {
                     boolean changed = existing.getDrawStatus() == null
                             || existing.getDrawStatus() != LotIssue.DRAW_DONE
                             || !Objects.equals(existing.getRedNumbers(), record.red())
-                            || !Objects.equals(nvl(existing.getBlueNumbers()), nvl(blankToNull(record.blue())));
+                            || !Objects.equals(nvl(existing.getBlueNumbers()), nvl(blankToNull(record.blue())))
+                            // 老数据只存了号码指标，缺 sales/pool/prizes：重跑同步时按变更处理，回填官方奖项
+                            || existing.getExtra() == null
+                            || !existing.getExtra().contains("\"prizes\"");
                     if (changed) {
                         applyDraw(existing, type, record);
                         issueMapper.updateById(existing);
@@ -149,8 +163,9 @@ public class DrawSyncServiceImpl implements DrawSyncService {
             }
         }
 
-        String message = String.format("拉取 %d 条，新增 %d，更正 %d，跳过 %d，失败 %d",
-                records.size(), inserted, updated, skipped, failed);
+        String message = String.format("拉取 %d 条，新增 %d，更正 %d，跳过 %d，失败 %d%s",
+                records.size(), inserted, updated, skipped, failed,
+                backfilled > 0 ? "，补全奖项 " + backfilled : "");
         log.info("开奖同步 {}：{}", type.getCode(), message);
         auditLogService.record("ISSUE", "DRAW_SYNC", "LOTTERY_TYPE", type.getId() == null ? null : type.getId().longValue(),
                 null, message, "官方数据源同步");
@@ -225,24 +240,38 @@ public class DrawSyncServiceImpl implements DrawSyncService {
                 if (latest == null) {
                     continue;
                 }
-                LocalDateTime drawTime = nextDrawTime(type, now);
+                // 开奖时间基准必须取「当前时刻」和「已有最新一期的开奖时间」的较大者：
+                // 只按 now 推算时，若最新一期的开奖时刻还没到（例如 21:03 时最新期是 21:15），
+                // 会再次推出同一个 21:15，造成同一开奖时间挂着多个期号（重复期次）
+                LocalDateTime baseTime = now;
+                if (latest.getDrawTime() != null && latest.getDrawTime().isAfter(baseTime)) {
+                    baseTime = latest.getDrawTime();
+                }
+                LocalDateTime drawTime = nextDrawTime(type, baseTime);
                 String base = latest.getIssueNo();
                 String issueNo = null;
-                // 推算出的期号可能已被「已过期但未录入开奖」的占位期次占用，继续往后推一期
                 for (int attempt = 0; attempt < 8; attempt++) {
                     String candidate = nextIssueNo(base, drawTime.toLocalDate());
                     if (candidate == null) {
                         break;
                     }
-                    long exists = issueMapper.selectCount(new LambdaQueryWrapper<LotIssue>()
+                    // 期号被占用 → 期号往后推；开奖时间被占用 → 时间往后推。两者互不影响
+                    boolean issueTaken = issueMapper.selectCount(new LambdaQueryWrapper<LotIssue>()
                             .eq(LotIssue::getTypeCode, code)
-                            .eq(LotIssue::getIssueNo, candidate));
-                    if (exists == 0) {
+                            .eq(LotIssue::getIssueNo, candidate)) > 0;
+                    boolean timeTaken = issueMapper.selectCount(new LambdaQueryWrapper<LotIssue>()
+                            .eq(LotIssue::getTypeCode, code)
+                            .eq(LotIssue::getDrawTime, drawTime)) > 0;
+                    if (!issueTaken && !timeTaken) {
                         issueNo = candidate;
                         break;
                     }
-                    base = candidate;
-                    drawTime = nextDrawTime(type, drawTime.plusMinutes(1));
+                    if (issueTaken) {
+                        base = candidate;
+                    }
+                    if (timeTaken) {
+                        drawTime = nextDrawTime(type, drawTime.plusMinutes(1));
+                    }
                 }
                 if (issueNo == null) {
                     continue;
@@ -339,7 +368,7 @@ public class DrawSyncServiceImpl implements DrawSyncService {
         if (groups.size() > 1 && (record.blue() == null || record.blue().isBlank())) {
             throw new BizException(ResultCode.ILLEGAL_ARGUMENT, "缺少副号码");
         }
-        lotteryService.validateNumbers(type, record.red(), record.blue());
+        lotteryService.validateDrawNumbers(type, record.red(), record.blue());
     }
 
     private LotIssue buildIssue(LotLotteryType type, DrawRecord record) {
@@ -374,6 +403,10 @@ public class DrawSyncServiceImpl implements DrawSyncService {
         issue.setSaleEndTime(drawTime.minusMinutes(offset));
     }
 
+    /**
+     * extra 里除号码指标外，还落官方公布的销售额、奖池与各奖等中奖情况，
+     * 供「开奖结果」页展示中奖注数/单注奖金，不必每次回源再查。
+     */
     private String buildExtra(LotLotteryType type, DrawRecord record) {
         List<Integer> reds = parse(record.red());
         if (reds.isEmpty()) {
@@ -385,8 +418,124 @@ public class DrawSyncServiceImpl implements DrawSyncService {
         int mid = midOf(type);
         long odd = reds.stream().filter(n -> n % 2 == 1).count();
         long big = reds.stream().filter(n -> n > mid).count();
-        return String.format("{\"sum\":%d,\"span\":%d,\"oddEven\":\"%d:%d\",\"bigSmall\":\"%d:%d\"}",
-                sum, max - min, odd, reds.size() - odd, big, reds.size() - big);
+
+        StringBuilder json = new StringBuilder(256);
+        json.append(String.format("{\"sum\":%d,\"span\":%d,\"oddEven\":\"%d:%d\",\"bigSmall\":\"%d:%d\"",
+                sum, max - min, odd, reds.size() - odd, big, reds.size() - big));
+
+        JsonNode node = null;
+        try {
+            if (record.raw() != null && !record.raw().isBlank()) {
+                node = objectMapper.readTree(record.raw());
+            }
+        } catch (Exception e) {
+            log.debug("开奖原始报文解析失败 {} {}", record.issueNo(), e.getMessage());
+        }
+        if (node != null) {
+            long sales = firstYuan(node, "sales", "totalSaleAmount");
+            long pool = firstYuan(node, "poolmoney", "poolBalance", "poolBalanceAfterdraw");
+            json.append(",\"sales\":").append(sales);
+            json.append(",\"pool\":").append(pool);
+            json.append(",\"prizes\":");
+            appendPrizes(json, node, type.getCode());
+        }
+        json.append('}');
+        return json.toString();
+    }
+
+    /** 官方金额字段有的是数字、有的带千分位与小数，统一折算成「元」 */
+    private long firstYuan(JsonNode node, String... fields) {
+        for (String f : fields) {
+            JsonNode v = node.get(f);
+            if (v == null || v.isNull()) {
+                continue;
+            }
+            String raw = v.isNumber() ? v.asString() : v.asString("").trim();
+            if (raw.isEmpty()) {
+                continue;
+            }
+            String digits = raw.replace(",", "").replace("，", "").trim();
+            try {
+                return (long) Double.parseDouble(digits);
+            } catch (NumberFormatException ignored) {
+                // 试下一个字段
+            }
+        }
+        return 0;
+    }
+
+    /** 福彩用 prizegrades（type 为序号或 x10z10 编码），体彩用 prizeLevelList（prizeLevel 直接是中文） */
+    private void appendPrizes(StringBuilder json, JsonNode node, String typeCode) {
+        List<String> rows = new ArrayList<>();
+        JsonNode cwl = node.get("prizegrades");
+        if (cwl != null && cwl.isArray()) {
+            for (JsonNode g : cwl) {
+                String name = prizeLevelName(typeCode, g.path("type").asString(""), rows.size() + 1);
+                String countRaw = g.path("typenum").asString("").trim();
+                String moneyRaw = g.path("typemoney").asString("").trim();
+                if (name == null || countRaw.isEmpty() || moneyRaw.isEmpty()) {
+                    continue;
+                }
+                long count = (long) parseDoubleSafe(countRaw);
+                long amount = (long) parseDoubleSafe(moneyRaw.replace(",", ""));
+                if (count <= 0) {
+                    continue;
+                }
+                rows.add(String.format("{\"level\":\"%s\",\"count\":%d,\"amount\":%d}", name, count, amount));
+            }
+        } else {
+            JsonNode list = node.get("prizeLevelList");
+            if (list != null && list.isArray()) {
+                for (JsonNode g : list) {
+                    String name = g.path("prizeLevel").asString("").trim();
+                    long count = (long) parseDoubleSafe(g.path("stakeCount").asString("0").replace(",", ""));
+                    long amount = (long) parseDoubleSafe(g.path("stakeAmount").asString("0").replace(",", ""));
+                    if (name.isEmpty() || count <= 0) {
+                        continue;
+                    }
+                    rows.add(String.format("{\"level\":\"%s\",\"count\":%d,\"amount\":%d}", name, count, amount));
+                }
+            }
+        }
+        json.append('[').append(String.join(",", rows)).append(']');
+    }
+
+    /**
+     * 福彩接口的奖等只有序号：双色球/3D 按序号映射，快乐8 用 x{选} z{中} 编码。
+     * 取不到名称时返回 null，该条直接跳过（宁可少一条也不展示无意义的类型码）。
+     */
+    private String prizeLevelName(String typeCode, String rawType, int fallbackIndex) {
+        if (rawType == null || rawType.isBlank()) {
+            return null;
+        }
+        if ("KL8".equals(typeCode)) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("x(\\d+)z(\\d+)").matcher(rawType.trim());
+            if (m.matches()) {
+                return "选" + m.group(1) + "中" + m.group(2);
+            }
+            return null;
+        }
+        try {
+            int idx = Integer.parseInt(rawType.trim());
+            String[] names = {"一等奖", "二等奖", "三等奖", "四等奖", "五等奖", "六等奖", "七等奖"};
+            if (idx >= 1 && idx <= names.length) {
+                return names[idx - 1];
+            }
+        } catch (NumberFormatException ignored) {
+            // 落回 null
+        }
+        return null;
+    }
+
+    private double parseDoubleSafe(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        try {
+            return Double.parseDouble(raw.replace(",", "").trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private int midOf(LotLotteryType type) {
@@ -449,6 +598,12 @@ public class DrawSyncServiceImpl implements DrawSyncService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /** 老数据只存了号码指标（sum/span/oddEven/bigSmall），缺少官方销售额与奖项 */
+    private boolean needsExtraBackfill(LotIssue issue) {
+        String extra = issue.getExtra();
+        return extra == null || !extra.contains("\"prizes\"");
     }
 
     private String rootMessage(Throwable e) {

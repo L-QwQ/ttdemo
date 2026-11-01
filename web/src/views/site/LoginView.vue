@@ -165,6 +165,16 @@ async function handleRegister() {
 
 <template>
   <div class="login-page">
+    <aside class="login-intro">
+      <router-link to="/" class="login-brand"><span>彩</span> 慧彩预测</router-link>
+      <div class="intro-content">
+        <p class="intro-eyebrow">DATA · INSIGHT · RECORD</p>
+        <h2>每一份认真分析，<br />都值得被看见。</h2>
+        <p class="intro-desc">连接创作者与数据，让历史记录成为交流的起点。</p>
+        <div class="intro-points"><span>官方开奖数据</span><span>可追溯的分析记录</span><span>透明的创作者榜单</span></div>
+      </div>
+      <p class="intro-note">理性看待概率，享受交流的过程。</p>
+    </aside>
     <div class="login-card">
       <div class="card-head">
         <h1>欢迎回来</h1>
@@ -287,19 +297,23 @@ async function handleRegister() {
 <style scoped>
 .login-page {
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+  align-items: center;
+  gap: 72px;
+  max-width: 1160px;
+  margin: 0 auto;
   min-height: 100vh;
-  padding: 40px 24px;
-  background: radial-gradient(circle at 20% 10%, #fbe9e5 0%, #f7f7f5 45%, #f7f7f5 100%);
+  padding: 48px 40px;
+
 }
 
 .login-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   background: #fff;
   border: 1px solid var(--border-soft);
-  border-radius: 16px;
-  padding: 32px;
+  border-radius: 22px;
+  padding: 36px;
   box-shadow: 0 18px 44px rgba(31, 36, 48, 0.08);
 }
 
@@ -326,7 +340,8 @@ async function handleRegister() {
 
 .submit {
   width: 100%;
-  margin-top: 4px;
+  height: 42px;
+  margin-top: 8px;
 }
 
 .agree {
@@ -341,7 +356,7 @@ async function handleRegister() {
 .agree :deep(.el-checkbox__label),
 .legal-tip {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--text-sub);
 }
 
 .agree a,
@@ -379,5 +394,29 @@ async function handleRegister() {
 
 :deep(.el-tabs__item) {
   font-size: 14px;
+}
+
+.login-intro { align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; padding: 24px 0; }
+.login-brand { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 700; }
+.login-brand span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 13px; color: white; background: var(--brand-grad); font-size: 23px; }
+.intro-content { padding: 60px 0; }
+.intro-eyebrow { color: #6883b1; font-size: 11px; letter-spacing: .2em; }
+.intro-content h2 { margin: 22px 0; font-size: clamp(30px, 3.2vw, 42px); letter-spacing: -.04em; line-height: 1.65; }
+.intro-desc { font-size: 14px; color: var(--text-sub); line-height: 1.9; }
+.intro-points { display: flex; flex-direction: column; gap: 14px; margin-top: 32px; font-size: 13px; color: var(--text-sub); }
+.intro-points span::before { content: '✓'; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; background: #e8effa; color: #6883b1; font-size: 11px; }
+.intro-note { font-size: 11px; color: var(--text-sub); }
+.card-head p { line-height: 1.8; }
+.agree :deep(.el-checkbox__label) { white-space: normal; line-height: 1.8; }
+@media (max-width: 820px) {
+  .login-page { grid-template-columns: minmax(0, 440px); justify-content: center; align-content: center; gap: 26px; padding: 32px 20px; }
+  .login-intro { padding: 0; }
+  .intro-content, .intro-note { display: none; }
+  .login-brand { font-size: 19px; }
+}
+@media (max-width: 440px) {
+  .login-card { padding: 26px 22px; }
+  .code-row { gap: 6px; }
+  .code-row .el-button { padding: 0 10px; font-size: 12px; }
 }
 </style>

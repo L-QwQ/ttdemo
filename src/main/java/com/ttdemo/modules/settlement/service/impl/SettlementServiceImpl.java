@@ -1,6 +1,7 @@
 package com.ttdemo.modules.settlement.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ttdemo.common.api.PageResult;
 import com.ttdemo.common.api.ResultCode;
@@ -145,7 +146,7 @@ public class SettlementServiceImpl implements SettlementService {
                                 .eq(PrdPredictionItem::getPredictionId, prediction.getId())
                                 .orderByAsc(PrdPredictionItem::getSortNo));
                 if (!items.isEmpty()) {
-                    HitJudge.JudgeResult result = hitJudge.judge(items, reds, blues);
+                    HitJudge.JudgeResult result = hitJudge.judge(items, reds, blues, issue.getTypeCode());
                     for (HitJudge.ItemResult itemResult : result.items()) {
                         PrdPredictionItem update = new PrdPredictionItem();
                         update.setId(itemResult.itemId());
@@ -222,8 +223,10 @@ public class SettlementServiceImpl implements SettlementService {
                     log.warn("结算消息推送失败 creator={} issue={} err={}", creatorId, issue.getIssueNo(), e.getMessage());
                 }
 
-                creator.setTotalIncome((creator.getTotalIncome() == null ? 0 : creator.getTotalIncome()) + income);
-                creatorMapper.updateById(creator);
+                // 原子累加：整行 update 会覆盖并发写入的其它创作者字段
+                creatorMapper.update(null, new LambdaUpdateWrapper<CreCreator>()
+                        .eq(CreCreator::getId, creatorId)
+                        .setSql("total_income = IFNULL(total_income, 0) + " + income));
 
                 for (OrdPredictionOrder order : orders) {
                     order.setStatus(OrdPredictionOrder.STATUS_SETTLED);

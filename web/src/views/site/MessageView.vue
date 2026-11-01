@@ -139,7 +139,7 @@ onMounted(reload)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-message">
     <header class="head">
       <div>
         <h1>消息中心</h1>
@@ -181,7 +181,7 @@ onMounted(reload)
         :key="row.id"
         class="msg"
         :class="{ unread: row.isRead === 0 }"
-        @click="open(row)"
+        tabindex="0" role="button" @keydown.enter="open(row)" @keydown.space.prevent="open(row)" @click="open(row)"
       >
         <div class="msg-head">
           <div class="msg-tags">

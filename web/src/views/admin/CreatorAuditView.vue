@@ -151,7 +151,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-creator-audit">
     <div class="head">
       <h1>创作者审核</h1>
       <span class="hint">
@@ -319,13 +319,12 @@ onMounted(async () => {
 .page { padding: 4px; }
 .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 h1 { margin: 0; font-size: 20px; }
-.hint { font-size: 12px; color: var(--el-text-color-secondary); }
+.hint { font-size: 12px; color: var(--text-sub); }
 .tab-badge { margin-left: 6px; }
 .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .table { background: #fff; border-radius: 10px; }
-.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
 .user-cell { display: flex; flex-direction: column; line-height: 1.35; }
-.user-cell .sub { font-size: 11px; color: var(--el-text-color-secondary); }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
+.user-cell .sub { font-size: 11px; color: var(--text-sub); }
+.muted { color: var(--text-sub); font-size: 12px; }
 :deep(.row-danger) { background: var(--el-color-danger-light-9); }
 </style>

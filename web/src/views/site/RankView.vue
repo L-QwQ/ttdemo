@@ -34,7 +34,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-rank">
     <PageHeader title="创作者榜单" sub="榜单每日 01:00 生成快照，不实时变动">
       <el-select v-model="typeCode" style="width: 140px" @change="load">
         <el-option label="全站" value="ALL" />
@@ -50,7 +50,7 @@ onMounted(async () => {
 
     <div v-loading="loading" class="list">
       <el-empty v-if="!loading && (data?.list?.length ?? 0) === 0" description="暂无上榜创作者（样本不足或今日快照未生成）" />
-      <div v-for="row in data?.list || []" :key="row.creatorId" class="row card-hover" @click="$router.push(`/creator/${row.creatorId}`)">
+      <div v-for="row in data?.list || []" :key="row.creatorId" class="row card-hover" tabindex="0" role="link" @keydown.enter="$router.push(`/creator/${row.creatorId}`)" @click="$router.push(`/creator/${row.creatorId}`)">
         <div class="rank" :class="{ top: row.rankNo <= 3 }">{{ row.rankNo }}</div>
         <el-avatar :size="40" :src="row.avatar || undefined">{{ row.penName?.slice(0, 1) }}</el-avatar>
         <div class="info">
@@ -67,22 +67,21 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
 .head h1 { margin: 0 0 6px; font-size: 22px; }
-.sub { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); }
+.sub { margin: 0; font-size: 13px; color: var(--text-sub); }
 .tabs { margin-bottom: 12px; }
 .note { margin-bottom: 14px; }
 .list { min-height: 160px; display: flex; flex-direction: column; gap: 10px; }
 .row {
   display: flex; align-items: center; gap: 14px; background: #fff;
-  border: 1px solid var(--el-border-color-lighter); border-radius: 12px; padding: 12px 16px;
+  border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px 16px;
   cursor: pointer;
 }
-.rank { width: 32px; text-align: center; font-weight: 700; font-size: 16px; color: var(--el-text-color-secondary); }
+.rank { width: 32px; text-align: center; font-weight: 700; font-size: 16px; color: var(--text-sub); }
 .rank.top { color: var(--el-color-danger); font-size: 20px; }
 .info { flex: 1; min-width: 0; }
 .name { font-weight: 600; font-size: 15px; }
-.meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+.meta { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
 .metric { font-weight: 700; color: var(--el-color-primary); font-size: 16px; white-space: nowrap; }
 </style>

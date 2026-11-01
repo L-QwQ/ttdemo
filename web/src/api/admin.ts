@@ -12,6 +12,28 @@ import type {
   UserVO,
 } from '@/types'
 
+export interface AdminTrend {
+  days: number
+  dates: string[]
+  newUsers: number[]
+  logins: number[]
+  predictions: number[]
+  orders: number[]
+  orderPoints: number[]
+  draws: number[]
+}
+
+export interface DistributionItem {
+  key: string
+  value: number
+}
+
+export interface AdminDistribution {
+  predictionsByType: DistributionItem[]
+  ordersByStatus: DistributionItem[]
+  issuesByDrawStatus: DistributionItem[]
+}
+
 export interface AdminUserQuery {
   page?: number
   size?: number
@@ -44,6 +66,14 @@ export const adminApi = {
   },
   stats() {
     return request<AdminStats>({ url: '/admin/stats/overview', method: 'get' })
+  },
+  /** 按天趋势，days 取值 7-30（后端会收敛） */
+  trend(days = 14) {
+    return request<AdminTrend>({ url: '/admin/stats/trend', method: 'get', params: { days } })
+  },
+  /** 彩种 / 订单状态 / 期次状态分布 */
+  distribution() {
+    return request<AdminDistribution>({ url: '/admin/stats/distribution', method: 'get' })
   },
   platformStats() {
     return request<{

@@ -124,6 +124,9 @@ public class RewardServiceImpl implements RewardService {
             throw new BizException(ResultCode.NOT_FOUND, "该权益不存在或已下架");
         }
         int quantity = request.quantity() == null ? 1 : request.quantity();
+        if (quantity < 1 || quantity > 99) {
+            throw new BizException(ResultCode.BAD_REQUEST, "兑换数量应在 1-99 之间");
+        }
         long totalPoints = item.getPointsCost() * quantity;
 
         long minPoints = configService.getLong(CFG_MIN_POINTS, 100L);
@@ -276,12 +279,16 @@ public class RewardServiceImpl implements RewardService {
         if (order.getStatus() != null && order.getStatus() == AccRewardOrder.STATUS_CANCELED) {
             throw new BizException(ResultCode.STATE_CONFLICT, "该兑换单已取消");
         }
-        orderMapper.update(null, new LambdaUpdateWrapper<AccRewardOrder>()
+        int issued = orderMapper.update(null, new LambdaUpdateWrapper<AccRewardOrder>()
                 .eq(AccRewardOrder::getId, orderId)
                 .eq(AccRewardOrder::getStatus, AccRewardOrder.STATUS_PENDING)
                 .set(AccRewardOrder::getStatus, AccRewardOrder.STATUS_ISSUED)
                 .set(AccRewardOrder::getIssuedAt, LocalDateTime.now())
                 .set(AccRewardOrder::getIssueRemark, StringUtils.hasText(remark) ? remark : "已发放"));
+        // 影响 0 行说明并发下已被别人改过状态，不能再推「已发放」通知
+        if (issued == 0) {
+            throw new BizException(ResultCode.STATE_CONFLICT, "该兑换单状态已变更，请刷新后重试");
+        }
 
         safeNotify(() -> messageService.rewardIssued(order.getUserId(), orderId, order.getItemName(), remark));
     }
@@ -300,11 +307,16 @@ public class RewardServiceImpl implements RewardService {
                 && order.getStatus() != null && order.getStatus() == AccRewardOrder.STATUS_ISSUED) {
             throw new BizException(ResultCode.STATE_CONFLICT, "会员权益已发放，不能取消，请联系用户协商");
         }
-        orderMapper.update(null, new LambdaUpdateWrapper<AccRewardOrder>()
+        int canceled = orderMapper.update(null, new LambdaUpdateWrapper<AccRewardOrder>()
                 .eq(AccRewardOrder::getId, orderId)
                 .ne(AccRewardOrder::getStatus, AccRewardOrder.STATUS_CANCELED)
                 .set(AccRewardOrder::getStatus, AccRewardOrder.STATUS_CANCELED)
                 .set(AccRewardOrder::getIssueRemark, StringUtils.hasText(remark) ? remark : "运营取消"));
+        // 必须依赖受影响行数做幂等：并发重复取消时状态更新为 0 行，
+        // 若继续往下走，积分退回会被流水唯一键挡住，但库存归还不会，导致库存被重复加回
+        if (canceled == 0) {
+            throw new BizException(ResultCode.STATE_CONFLICT, "该兑换单已取消");
+        }
 
         // 退回积分（biz_type+biz_no 唯一索引天然防重复退）并归还库存
         pointService.earn(order.getUserId(), order.getPointsCost(), BIZ_CANCEL, order.getOrderNo(), "兑换取消退回积分");

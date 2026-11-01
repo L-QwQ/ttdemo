@@ -48,7 +48,48 @@ public final class RandomDtos {
             Integer historySize,
             Integer sumMin,
             Integer sumMax,
-            Long seed
+            Long seed,
+            /** 投注方式：SINGLE 单式 / MULTI 复式，缺省单式 */
+            String betMode,
+            /** 复式主号（红球/前区/号码池）个数 */
+            Integer multiMain,
+            /** 复式副号（蓝球/后区）个数 */
+            Integer multiSub
+    ) {
+    }
+
+    /**
+     * 复式规格：standard 是单式一注的号码个数，min/max 是复式可选的号码个数范围。
+     * 位号玩法（福彩3D / 排列3）需要按位分别选号，暂不支持复式，supported=false。
+     */
+    public record BetGroupSpec(
+            String key,
+            String name,
+            int standard,
+            int min,
+            int max,
+            int defaultValue
+    ) {
+    }
+
+    /** 复式能力说明，供前端渲染号码个数选择器 */
+    public record BetSpec(
+            boolean supported,
+            String note,
+            BigDecimal unitPrice,
+            List<BetGroupSpec> groups
+    ) {
+    }
+
+    /** 本注的投注信息：注数 = 各组组合数之积，金额 = 注数 × 单价（2 元/注） */
+    public record BetInfo(
+            String mode,
+            String modeName,
+            int betCount,
+            BigDecimal amount,
+            BigDecimal unitPrice,
+            String formula,
+            String label
     ) {
     }
 
@@ -83,7 +124,8 @@ public final class RandomDtos {
             String reason,
             List<GroupResult> groups,
             Metrics metrics,
-            List<ItemPayload> items
+            List<ItemPayload> items,
+            BetInfo bet
     ) {
     }
 

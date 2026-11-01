@@ -55,8 +55,11 @@ public interface LotteryService {
     /** 人工录入第二步：凭票据写入开奖号（双人复核） */
     void confirmDrawResult(Long issueId, DrawResultRequest request);
 
-    /** 号码校验：按 play_config 的范围与个数约束 */
+    /** 号码校验：按 play_config 的范围与个数约束（投注可选个数 pickMin/pickMax） */
     void validateNumbers(LotLotteryType type, String red, String blue);
+
+    /** 开奖号码校验：个数按 drawCount、范围按 min/max，不受投注可选个数限制 */
+    void validateDrawNumbers(LotLotteryType type, String red, String blue);
 
     /** 取开奖号数组（红/前区） */
     List<Integer> redList(LotIssue issue);

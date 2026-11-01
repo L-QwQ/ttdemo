@@ -1,9 +1,9 @@
 # ttdemo · 彩票预测平台
 
-Spring Boot 4 + MyBatis-Plus + MySQL + Vue 3 的前后端工程。在「主站 + 管理后台 + 手机号验证码登录 + JWT 双令牌 + 细粒度权限」骨架上，叠加了完整的彩票预测业务：**彩种期次与开奖同步、预测发布审核、定价与积分解锁、开奖结算分账、创作者准确度评分、站内权益兑换、随机预测（含玄学玩法）**。
+Spring Boot 4 + MyBatis-Plus + MySQL + Vue 3 的前后端工程。在「主站 + 管理后台 + 手机号验证码登录 + JWT 双令牌 + 细粒度权限」骨架上，叠加了完整的彩票预测业务：**彩种期次与开奖同步、预测发布审核、定价与积分解锁、开奖结算分账、创作者准确度评分、站内权益兑换、随机预测（含玄学玩法与复式投注）、开奖结果查询、会员自选号码本（单式/复式）与按期拆注兑奖**。
 
-- 后端 20 个业务模块、39 张表、146 个接口（28 个 Controller）
-- 前端 32 个页面，Element Plus 已按需引入
+- 后端 22 个业务模块、40 张表、152 个接口（29 个 Controller）
+- 前端 34 个页面，Element Plus 已按需引入
 - 数据库初始化**只需一个脚本、一条命令**（幂等，可重复执行）
 
 ---
@@ -47,7 +47,7 @@ ttdemo/
 │   │   ├── JwtTokenProvider / JwtAuthenticationFilter / SecurityUtils
 │   │   └── perm/               # @RequirePerm / @RequireCreator + PermAspect + PermService
 │   ├── job/ScheduledJobs       # 开奖同步、补期、锁期、结算、评分、榜单、积分过期
-│   └── modules/                # 业务模块（按功能纵向切分，共 20 个）
+│   └── modules/                # 业务模块（按功能纵向切分，共 22 个）
 │       ├── auth/               # 认证：验证码、注册、登录、刷新、重置密码
 │       ├── user/               # 用户：资料、头像、改密、注销
 │       ├── admin/              # 管理后台：管理员登录、用户管理、统计、日志
@@ -60,6 +60,7 @@ ttdemo/
 │       ├── random/             # 随机预测：15 种方法 + MysticEngine 玄学引擎 + 每日配额
 │       ├── point/              # 积分账户、流水（唯一账本）、批次 FIFO、过期
 │       ├── order/              # 解锁订单、充值订单、支付回调
+│       ├── pick/              # 自选号码本：保存号码、按期兑奖（单式/复式拆注）、改期（会员）
 │       ├── settlement/         # 开奖结算、分账、结算单撤销、财务对账
 │       ├── finance/            # 真实资金流水分页与统计
 │       ├── reward/             # 积分兑换站内权益（合规：不兑换现金）
@@ -76,13 +77,14 @@ ttdemo/
 ├── src/test/java/.../JwtTokenProviderTest.java
 └── web/                        # 前端（主站 + /admin 后台同一工程）
     └── src/
-        ├── api/                # http（双令牌拦截器）+ 14 个业务接口模块
+        ├── api/                # http（双令牌拦截器）+ 15 个业务接口模块
         ├── stores/             # auth.ts 登录态与权限、notice.ts 未读数
         ├── router/index.ts     # 路由 + 守卫（requiresAuth / requiresAdmin）
         ├── layouts/            # SiteLayout、AdminLayout（菜单按权限过滤）
         ├── utils/              # format、perms、lottery 常量
+        ├── components/         # lottery/：BallGroup 开奖球、PickBalls 只读小球、BallPicker 选号器
         └── views/
-            ├── site/           # 19 个前台页面
+            ├── site/           # 21 个前台页面
             ├── admin/          # 12 个后台页面
             └── error/
 ```
@@ -216,6 +218,19 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 | PUT | `/api/user/password/init` | 首次设置密码（手机号自动注册的场景） |
 | GET / POST | `/api/user/deactivate` | 注销申请：查询剩余积分与应退金额 / 提交 |
 
+### 5.2.1 自选号码本（需登录；写入需会员）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/v1/my-picks` | 号码本列表，每条带按绑定期号算出的兑奖结果；非会员返回 `vip=false` 与条数，不返回号码 |
+| POST | `/api/v1/my-picks` | 保存号码；`issueNo` 留空则自动绑当前在售期 |
+| PUT | `/api/v1/my-picks/{id}` | 改绑期号 / 备注，改完立即重算兑奖 |
+| DELETE | `/api/v1/my-picks/{id}` | 删除单条（不校验会员，会员到期后仍可清理自己的数据） |
+| DELETE | `/api/v1/my-picks` | 清空本人号码本（同上，不校验会员） |
+| POST | `/api/v1/my-picks/check` | 兑奖试算，不落库 |
+
+**复式支持**：主号 / 副号个数 **≥ 单注个数**即可保存，保存后按 `C(n,k)` 拆注逐注兑奖再汇总；接口额外返回 `bets` / `winBets` / `breakdown`。注数上限 5000 注，位号玩法（3D/排列3）仍要求正好 3 位。口径与实测见 [8.4](#84-自选号码与兑奖modulespick)。
+
 ### 5.3 通知公告与反馈（需登录）
 
 | 方法 | 路径 | 说明 |
@@ -232,7 +247,7 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/v1/lottery/types` | 彩种列表 |
-| GET | `/api/v1/lottery/issues` | 期次列表（`typeCode`、`limit` ≤ 100） |
+| GET | `/api/v1/lottery/issues` | 期次列表（`typeCode`、`drawStatus`、`limit` ≤ 100，按开奖时间倒序）；开奖结果页与号码本期号下拉都走这里 |
 | GET | `/api/v1/lottery/issues/current` | 各彩种当前期（首页「即将开奖」） |
 | GET | `/api/v1/lottery/issues/{id}` | 期次详情 |
 
@@ -250,6 +265,12 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 | POST | `/api/v1/predictions/{id}/promote` | 置顶推广（50 积分/天） |
 | GET | `/api/v1/predictions/price-quote` | 定价试算 |
 | GET | `/api/v1/predictions/mine` / `purchased` | 我发布的 / 我解锁的 |
+
+**列表与详情的号码下发口径**：
+
+- `GET /api/v1/predictions` 的 `freeItems[]` 带 `value`（免费项的真实号码），另给 `itemCount` / `freeCount`，广场据此渲染「免费项出号码球 + 剩余 N 个付费项」；`toListItems` 用一条 `in` 查询取全部预测项再内存拆分，不是 N+1
+- `GET /api/v1/predictions/{id}` 的 `items[]` 是**逐项视图**：`{itemType,label,value,count,free,locked}`。付费未解锁项 `value=null`、`locked=true`，只给 `count`（号码个数），前端据此画等量占位球——看得到「有几个号」，拿不到号码本身
+- 整篇免费预测（`pricePoints=0`）**全部项公开**，不再只露 40% 的免费项
 
 ### 5.6 订单、积分与充值
 
@@ -270,7 +291,8 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/v1/random/methods` | 15 种方法（含分组与是否会员专享） |
-| POST | `/api/v1/random/generate` | 生成预测（扣配额） |
+| GET | `/api/v1/random/bet-options` | 复式规格：各组单注个数与可选范围（位号玩法 `supported=false`） |
+| POST | `/api/v1/random/generate` | 生成预测（扣配额），`betMode=SINGLE/MULTI` |
 | GET | `/api/v1/random/quota` / `history` | 今日剩余免费次数 / 历史记录 |
 | POST | `/api/v1/creator/apply` | 申请成为创作者 |
 | GET / PUT | `/api/v1/creator/profile` | 创作者资料 |
@@ -343,14 +365,26 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 - `Components({ dts: false })` 是刻意保留的：生成精确组件类型会让 `el-table` 插槽的 `scope.row` 从 `any` 收紧为 `DefaultRow`，历史模板需改 27 处
 - 中文 locale 由 `App.vue` 的 `<el-config-provider :locale="zhCn">` 兜底
 
+**预构建清单**：按需引入的每个 `element-plus/es/components/<dir>/index.mjs` 都是「运行到哪张页面才被发现」的依赖。开发态首次打开用到新组件的页面时，Vite 会重新预构建，正在加载的模块随即变成旧哈希，浏览器拿到 `504 (Outdated Optimize Dep)`，动态 import 失败导致路由白屏（发布页用 `el-slider`，最容易踩）。`vite.config.ts` 的 `collectElementPlusDeps()` 在配置期扫描 `src` 下真正用到的 `el-*` 与 `ElMessage`/`ElMessageBox`/`ElNotification`/`ElLoading`，连同 `style/css` 一起写进 `optimizeDeps.include`，预构建启动时一次做完，运行中不再重新预构建。
+
+> 改完 `vite.config.ts` 或升级 element-plus 后，若仍见 504，重启 dev server（`npm run dev -- --force`）即可；这不是页面代码问题。
+
 效果：dev 态预构建 9.0 MB → 2.8 MB，最大单文件 map 4.21 MB → 0.42 MB；生产 `dist` JS 约 1.2 MB，最大单文件 124 KB。
 
 ### 7.2 页面
 
 | 分区 | 页面 |
 |---|---|
-| 主站 | 首页、预测广场、预测详情、随机预测、榜单、创作者主页/认证/看板/收益、发布预测、我的积分、我的解锁、积分兑换、消息中心、通知中心、意见反馈、个人中心、协议条款、登录注册 |
+| 主站 | 首页、预测广场、预测详情、随机预测、开奖结果、我的号码、榜单、创作者主页/认证/看板/收益、发布预测、我的积分、我的解锁、积分兑换、消息中心、通知中心、意见反馈、个人中心、协议条款、登录注册 |
 | 后台 | 仪表盘、用户管理、登录日志、预测审核、期次管理、创作者审核、财务与配置、权益管理、举报与注销、通知公告、用户反馈、后台登录 |
+
+**关键交互**（与后端契约一一对应）：
+
+- **发布预测**：号码型预测项用 `components/lottery/BallPicker.vue`，**点选与粘贴识别并存**——直接粘 `01, 07 15，33`（中英文逗号、空格都认），失焦时自动补零、去重、截断、丢弃越界。双色球/大乐透/快乐8 是点选模式（去重升序）；福彩3D/排列3 是**按位追加**模式（保留顺序与重复，如 `7,0,0`，带槽位与退格）。上限按判定口径取：`单式红球组`/`蓝球`必须正好等于开奖个数（否则 `HitJudge` 里 `predicted.size() == reds.size()` 永远不成立），`复式/胆码/杀号`才用 `pickMax`
+- **预测广场**：免费项直接渲染号码球，付费项只显示「N 个付费项 · X 积分解锁后可见」；已购买显示「已解锁，点开查看」
+- **预测详情**：摘要与付费正文之间新增「预测项」卡片，每行 `序号 | 类型 | 号码或占位球 | 免费 / 已解锁 / 未解锁`，底部一条「还有 N 项需解锁」+ 解锁按钮
+- **随机预测**：参数条可切单式 / 复式，复式时按组给号码个数并实时预览注数与金额；结果卡每注一条 `复式 | 8+2 | 56 注 | ¥112 | C(8,6) × C(2,1) = 56 注 × 2 元/注`
+- **我的号码**：单式与复式**同一套口径**显示 `{单式|复式} N 注 · ¥M`（M = 注数 × 2 元），中奖金额、命中数、各奖等明细分行；未开奖时也给注数与投入
 
 ---
 
@@ -387,11 +421,32 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 **同步策略**：
 
 - 按 `(type_code, issue_no)` **upsert**，重复执行幂等（已存在且号码一致 → 跳过）；已结算期次不覆盖，避免破坏账目
-- 校验复用 `LotteryService.validateNumbers`，失败落 `lot_sync_error`
+- 开奖号码校验走 `LotteryService.validateDrawNumbers`：**个数按 `play_config.groups[].drawCount`**（快乐8 每期开 20 个），**范围按 min/max**；投注可选个数 `pickMin/pickMax` 是另一套概念（快乐8 一注最多选 10 个），两者不能混用
+- 失败落 `lot_sync_error`
 - 统计口径只认官方期号，历史测试期次不参与热号/冷号计算
 - `ensure-upcoming` 按最新真实期号 +1 并结合开奖日历（`draw_weekdays` / `draw_time_of_day`）生成下一期，跨年自动重置为 `001`
+  - 基准时间取 `max(now, 最新一期 draw_time)`，并校验**开奖时间是否已被占用**：否则在「停售时刻 ~ 开奖时刻」窗口内每触发一次就会多生成一期，全部堆在同一开奖时间
+- `lot_issue.extra` 除号码指标（`sum/span/oddEven/bigSmall`）外，还落官方公布的 `sales`（销售额）、`pool`（奖池）、`prizes[]`（奖等/注数/单注奖金，单位元），供开奖页直接展示，不必回源
+  - 福彩 `prizegrades` 只有序号：双色球/3D 映射一~七等奖，快乐8 是 `x{选}z{中}` 编码（解析成「选10中10」）；体彩 `prizeLevelList` 直接带中文奖等
+  - 已结算期次不允许改号码，但缺 `prizes` 时会单独补 `extra` 一列（`needsExtraBackfill`）
 - 开关：`sys_config.feature.draw.sync`；代理：`app.draw.proxy`（留空则读环境变量 `HTTPS_PROXY`）
 - 同步接口返回 `{fetched, inserted, updated, skipped, failed, message, errors[]}`
+
+### 8.1.1 预测项的免费 / 付费可见性
+
+预测项（`prd_prediction_item`）逐项区分免费与付费，可见性在服务层判定，不依赖前端隐藏：
+
+| 场景 | 下发内容 |
+|---|---|
+| 整篇免费（`price_points = 0`） | 全部项 `value` 都给，`locked=false` |
+| 免费项（`is_free = 1`） | `value` 给真实号码，任何人可见 |
+| 付费项 + 作者本人 / 已购买 | `value` 给真实号码，`locked=false` |
+| 付费项 + 未购买 | `value=null`、`locked=true`，只给 `count`（号码个数） |
+
+- 可见性公式与付费正文同一口径：`visible = 作者本人 || 已购买 || 整篇免费`
+- `count` 是刻意保留的：未解锁时前端能画出**等量占位球**，用户知道这里有几个号，但拿不到号码
+- **免费项占比 ≤ 40%** 是发布硬约束（`PredictionServiceImpl`），且至少 1 项免费；2 项时数学上无解（1/2 = 50%），所以发布页默认给 3 项 1 免费（33%）
+- 超限直接拒绝发布，前端在预测项区域常驻显示 `免费 1/3 33%` 徽标，超限转红并提示「4 项最多 1 项免费」
 
 ### 8.2 随机预测
 
@@ -407,14 +462,32 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 
 **实现要点**：
 
-- **一注号码个数**优先取历史开奖结构（SSQ 6+1、DLT 5+2、FC3D/PL3 3 位、KL8 20 个），无历史时用内置标准表——`play_config.pickMin` 是「可选取号码数范围」，不等于注数
+- **一注号码个数**以内置标准表为准（SSQ 6+1、DLT 5+2、FC3D/PL3 3 位、KL8 10 个），历史开奖结构只在未配置时兜底。`play_config.pickMin/pickMax` 是「可投注号码个数范围」，不等于注数；**开奖号码个数也不等于一注号码数**——快乐8 每期开 20 个号，但一注（选十）只选 10 个，二者不可混用
+- 和值锚定的默认区间按「本注号码数 × 号码池均值」估算，不用历史和值平均（快乐8 历史是 20 码和值约 810，10 码一注约 405，直接套会永远命中不了）
 - FC3D / PL3 按**位号**处理，允许重复号码（如 `7,0,0`），其余彩种号码不重复且升序展示
 - 输出 `items` 与发布接口 `PredictionDtos.ItemRequest` 同构，前端「带入发布页」直接填充（`sessionStorage: ttdemo.randomDraft`）
 - 历史数据不足**不禁用**方法，降级为纯随机并在方法卡上提示，避免整排灰掉
+
+#### 复式与投注金额
+
+`betMode=MULTI` 时按用户选的每组号码个数取号，`multiMain` / `multiSub` 对应主号（红球/前区/号码池）与副号（蓝球/后区）：
+
+| 彩种 | 单注 | 复式范围 | 注数口径 |
+|---|---|---|---|
+| SSQ | 6+1 | 红 7–20、蓝 2–16 | `C(红,6) × 蓝` |
+| DLT | 5+2 | 前区 6–18、后区 3–12 | `C(前,5) × C(后,2)` |
+| KL8 | 10 | 11–20 | `C(码,10)` |
+
+- **上限不能直接取 `pickMax`**：双色球蓝球 `pickMax=1`、快乐8 `pickMax=10` 都是「单注」限制，复式要按「主号 max(pickMax, drawCount)、副号整池」算，否则 8+2 选不出来、快乐8 选十复式被卡在 10 个号
+- **注数 = 各组组合数之积，金额 = 注数 × 2 元**（`RandomDtos.BetInfo`，含 `label` 如 `复式 8+2 · 56 注 · ¥112` 和 `formula` 如 `C(8,6) × C(2,1) = 56 注 × 2 元/注`），金额只作参考，平台不提供代购
+- 复式下发 `RED_MULTI` 而非 `RED_SINGLE`（后者要求与开奖完全一致，8 个号永远判不中）；蓝球/后区是号码池，判定改成「开奖副号全部落在池内」（`HitJudge`），单式时池里只有一个号，等价于原来的「相等」
+- 复式**不下发 `SPAN`**：号码池的跨度不是任何一注的跨度，单值必然判错；`SUM_RANGE` 用「一注 standard 个号」的期望和值 ± 区间，避免 12 码池和值虚高
+- 位号玩法（FC3D/PL3）的复式要按百位/十位/个位分别选号，`supported=false`，前端置灰并提示
 - 可选 `seed`，同 seed 结果可复现（`OMISSION` 完全确定）
 - **参考期数联动**：改期数后 400ms 防抖自动重算；结果区显示「使用最近 N 期」，参数区显示「库中可用 M 期」
 - **数据可溯源**：结果下方给出数据说明 + 来源构成（自动同步 / 人工录入），可展开查看每期期号、开奖时间、开奖号、来源
 - 生成的期次数据来自 `lot_issue` 表 `draw_status=1` 的记录，`dataSource` 区分 1=自动同步、2=人工录入
+- 结果卡片右上角可**保存到「我的号码」**（会员），保存时自动绑当前在售期，开奖后自动兑奖；复式按号码池整组保存，兑奖时拆注汇总（见 [8.4](#84-自选号码与兑奖modulespick)），超过 5000 注前端先拦
 - 接口免登录：`GET /api/v1/random/methods`、`GET /api/v1/random/history`、`POST /api/v1/random/generate`；页面：`/random`
 
 ### 8.3 定时任务（`job/ScheduledJobs`）
@@ -431,18 +504,71 @@ set ALIYUN_SMS_TEMPLATE_CODE=SMS_xxxxxx   # 模板变量名必须为 ${code}
 
 全部幂等，可安全重跑。
 
+### 8.4 自选号码与兑奖（`modules/pick`）
+
+会员可把自己的号码存进号码本，系统按**绑定期号**的开奖自动算奖级与单注奖金。
+
+**期号绑定**：
+
+- 保存时留空 `issueNo` → 自动绑当前在售期（即将开奖的那一期）；指定期号则必须是该彩种真实存在的期次
+- 绑的是待开奖期 → 返回 `level=待开奖`，开奖后列表自动出结果；绑的是已开奖期 → 立即算出奖级
+- 历史数据 `issue_no` 为空时回退到最新已开奖期，不报错
+- `PUT /api/v1/my-picks/{id}` 可随时改期，改完立即重算
+
+**奖级与奖金**（`engine/PrizeCalculator`，固定奖内置、浮动奖取当期公告）：
+
+| 彩种 | 奖级 |
+|---|---|
+| 双色球 | 6+1 一等、6+0 二等（浮动，取当期 `prizes`）；5+1 三等 3000；5+0 / 4+1 四等 200；4+0 / 3+1 五等 10；蓝球命中 六等 5 |
+| 大乐透 | 一、二等奖浮动；三 10000、四 3000、五 300、六 200、七 100、八 15、九 5 |
+| 福彩3D / 排列3 | 逐位全同「直选」1040；号码集合相同按开奖形态给「组选三」346 /「组选六」173 |
+| 快乐8 | 按选十：中 10 → 500 万、9 → 8000、8 → 720、7 → 80、6 → 5、5 → 3、0 → 2 |
+
+**复式与拆注兑奖**（`PrizeCalculator.judgeMulti`）：
+
+号码个数只要 **≥ 单注个数** 即可保存（双色球 ≥6+1、大乐透 ≥5+2、快乐8 ≥10），保存后按组合数拆成多注逐注判定再汇总。
+
+| 项 | 说明 |
+|---|---|
+| 注数 | `C(主号数, 单注主号数) × C(副号数, 单注副号数)`，如 8+2 → `C(8,6) × C(2,1) = 56` |
+| 兑奖 | 枚举全部组合，每注走原 `judge`，汇总总金额与各奖等注数 |
+| 单式 | 个数正好相等时**不枚举**，直接走原判定，结果与旧版一致 |
+| 上限 | 单个号码池最多 **5000 注**（`PickServiceImpl.MAX_BETS`），超出拒绝并提示拆成多组——快乐8 20 码是 184756 注 |
+| 位号玩法 | 福彩3D / 排列3 没有复式概念，仍要求正好 3 位 |
+
+存储上号码池就是**一行**，`usr_pick.red_numbers` / `blue_numbers` 已放宽到 `VARCHAR(255)` / `VARCHAR(128)`（历史库重跑 `schema.sql` 会自动 `MODIFY COLUMN`，幂等）。不拆成多行存——否则 50 组容量会被一个 8+2 复式吃掉 56 行。
+
+接口返回三个复式字段（`PickVO` / `CheckVO` 同构）：
+
+- `bets`：拆出的总注数。**未开奖时也返回**，前端据此显示「复式 56 注 · ¥112」（金额 = 注数 × 2 元）
+- `winBets`：其中中奖的注数
+- `breakdown`：各奖等明细，如 `三等奖 3 注、四等奖 18 注、五等奖 25 注`
+
+`level` 在复式时是「最高奖等 × 中奖注数」（如 `三等奖 × 46 注`）；`hitMain` / `hitSub` 是**号码池**命中数（8 码含 5 个开奖红球 → `5`），不是某一注的命中数。
+
+> 实测：双色球 8+2 对 `03,11,17,22,23,29 + 09` → 56 注中 28 注六等奖 ¥140；大乐透 7+3 全中 → 63 注，一等奖 1 / 二等奖 2 / 四等奖 10 / 五等奖 20 / 六等奖 10 / 八等奖 20。
+
+**会员边界**（易错点）：
+
+- 保存、试算、改期要求会员（`userService.isVip`），非会员统一 40301
+- **删除、清空不校验会员**：会员到期后用户仍能清理自己的数据，否则号码被永久锁死
+- `list` 对非会员只返回 `vip=false` 与条数，不返回号码内容
+- 注销账号时 `handleDeactivation` 会清空号码本（`UserServiceImpl` 用 `@Lazy` 注入 `PickService` 打破循环依赖）
+
 ---
 
 ## 9. 数据表
 
-39 张表，全部在 `src/main/resources/db/schema.sql`，按五段组织：
+40 张表，全部在 `src/main/resources/db/schema.sql`，按六段组织：
 
-1. **账号体系**：`sys_user`、`sms_code`、`sys_login_log`、`sys_notice`、`sys_notice_receiver`、`sys_feedback`、`sys_config`、`sys_audit_log`
-2. **彩票平台**：`lot_lottery_type`、`lot_issue`、`lot_sync_error`、`prd_prediction*`、`prd_audit_record`、`prd_view_log`、`ord_*`、`acc_point_*`、`acc_settlement`、`score_*`、`not_message`、`not_send_log`、`usr_realname`、`cre_creator`、`cre_follow`
-3. **合规与增长**：`sys_report`、`usr_sign_in`、`usr_deactivation`、`ord_promotion`
-4. **财务权益**：`acc_reward_item`、`acc_reward_order`
-5. **随机会员**：`rnd_daily_usage`
-6. **风控**：`risk_blacklist`、`risk_sensitive_word`
+1. **账号体系**（8）：`sys_user`、`sms_code`、`sys_login_log`、`sys_notice`、`sys_notice_receiver`、`sys_feedback`、`sys_config`、`sys_audit_log`
+2. **彩票平台**（22）：`lot_lottery_type`、`lot_issue`、`lot_sync_error`、`prd_prediction`、`prd_prediction_item`、`prd_audit_record`、`prd_view_log`、`ord_prediction_order`、`ord_recharge_order`、`ord_pay_notify_log`、`acc_point_account`、`acc_point_batch`、`acc_point_transaction`、`acc_settlement`、`score_creator_accuracy`、`score_daily_snapshot`、`score_rank_snapshot`、`not_message`、`not_send_log`、`usr_realname`、`cre_creator`、`cre_follow`
+3. **合规与增长**（4）：`sys_report`、`usr_sign_in`、`usr_deactivation`、`ord_promotion`
+4. **财务权益**（2）：`acc_reward_item`、`acc_reward_order`
+5. **随机会员与号码本**（2）：`rnd_daily_usage`、`usr_pick`
+6. **风控**（2）：`risk_blacklist`、`risk_sensitive_word`
+
+> 复式相关的字段调整（`usr_pick.red_numbers` → `VARCHAR(255)`、`blue_numbers` → `VARCHAR(128)`）已写成幂等 `MODIFY COLUMN`，历史库重跑脚本会自动补齐，不需要手工改表。
 
 ---
 
@@ -481,6 +607,10 @@ location /api/ {
 | 逻辑删除 + 唯一手机号 | 删除后手机号占位 | 需要复用手机号时改为 `deleted_at` 或加后缀 |
 | 预测申诉改判 | 由客服线下处理 + 财务调账 | 增加线上申诉流程 |
 | 注销退款 | 登记但未自动回退未结算创作收益 | 如需严格合规可补齐 |
+| 富文本清洗 | 后端 `HtmlSanitizer` 是正则黑名单（已加固 `<svg/onload>`、`java\tscript:`、`data:text/html` 等绕过），前端 `v-html` 处已接 DOMPurify | 长期建议后端换 OWASP Java HTML Sanitizer 白名单模式 |
+| 短信验证码限流 | 只有手机号维度的重发间隔与日限 | 可补 IP 维度，避免换号刷短信 |
+| 位号玩法复式 | 福彩3D / 排列3 的复式要按百位/十位/个位分别选号，随机预测与号码本均不支持（按钮置灰、接口 `supported=false`） | 需给 `play_config.groups` 加位号维度，并单独实现按位组合的注数与兑奖 |
+| 复式兑奖枚举 | 按组合逐个判定，单组上限 5000 注 | 组合数再大时改为按「命中数 × 组合计数」的闭式公式，不做枚举 |
 
 ---
 

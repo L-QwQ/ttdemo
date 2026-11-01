@@ -28,6 +28,7 @@ const router = createRouter({
         { path: 'prediction/:id', name: 'prediction-detail', component: () => import('@/views/site/PredictionDetailView.vue'), meta: { title: '预测详情' } },
         { path: 'rank', name: 'rank', component: () => import('@/views/site/RankView.vue'), meta: { title: '创作者榜单' } },
         { path: 'random', name: 'random', component: () => import('@/views/site/RandomView.vue'), meta: { title: '随机预测' } },
+        { path: 'draws', name: 'draws', component: () => import('@/views/site/DrawResultView.vue'), meta: { title: '开奖结果' } },
         { path: 'creator/:id', name: 'creator-home', component: () => import('@/views/site/CreatorHomeView.vue'), meta: { title: '创作者主页' } },
         {
           path: 'publish',
@@ -76,6 +77,12 @@ const router = createRouter({
           name: 'legal',
           component: () => import('@/views/site/LegalView.vue'),
           meta: { title: '协议与规则' },
+        },
+        {
+          path: 'my/picks',
+          name: 'my-picks',
+          component: () => import('@/views/site/MyPicksView.vue'),
+          meta: { title: '我的号码', requiresAuth: true },
         },
         {
           path: 'my/purchased',

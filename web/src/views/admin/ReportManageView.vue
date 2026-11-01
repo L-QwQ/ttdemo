@@ -110,7 +110,7 @@ onMounted(loadReports)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-report-manage">
     <header class="head">
       <div>
         <h1>内容举报与注销</h1>
@@ -245,12 +245,11 @@ onMounted(loadReports)
 .page { padding: 4px; }
 .head { margin-bottom: 12px; }
 h1 { margin: 0 0 4px; font-size: 20px; }
-.sub { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.sub { margin: 0; font-size: 12px; color: var(--text-sub); }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
 .notice { margin-bottom: 12px; }
 .table { background: #fff; border-radius: 10px; width: 100%; }
-.pager { margin-top: 12px; justify-content: flex-end; }
 .ml { margin-left: 6px; }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
+.muted { color: var(--text-sub); font-size: 12px; }
 .refund { color: var(--el-color-danger); }
 </style>

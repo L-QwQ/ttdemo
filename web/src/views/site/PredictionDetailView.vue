@@ -6,12 +6,14 @@ import { predictionApi, newIdempotentKey } from '@/api/prediction'
 import { pointApi } from '@/api/point'
 import { reportApi } from '@/api/growth'
 import { useAuthStore } from '@/stores/auth'
-import type { PredictionDetail } from '@/types/lottery'
+import type { PredictionDetail, PredictionItemView } from '@/types/lottery'
 import { formatDateTime } from '@/utils/format'
-import { typeName } from '@/utils/lottery'
+import DOMPurify from 'dompurify'
+import { typeName, isNumberItem, itemTypeName } from '@/utils/lottery'
 import { lotteryApi } from '@/api/lottery'
 import type { Issue } from '@/types/lottery'
 import BallGroup from '@/components/lottery/BallGroup.vue'
+import PickBalls from '@/components/lottery/PickBalls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -62,6 +64,14 @@ let timer: number | undefined
 
 const canRead = computed(() => !!content.value)
 const price = computed(() => detail.value?.pricePoints ?? 0)
+/** 未解锁的预测项数量，用于卡片底部提示 */
+const lockedItemCount = computed(() => detail.value?.items?.filter((i) => i.locked).length ?? 0)
+
+/** 未解锁项的占位球：号码项按实际个数画问号，其它类型只给一行文字 */
+function lockBallCount(item: PredictionItemView) {
+  if (!isNumberItem(item.itemType)) return 0
+  return Math.min(Math.max(item.count || 6, 1), 10)
+}
 
 function startCountdown() {
   timer = window.setInterval(() => {
@@ -84,12 +94,18 @@ const countdownText = computed(() => {
 
 const urgent = computed(() => remain.value > 0 && remain.value < 600)
 
+/** 富文本渲染前强制净化：后端正则黑名单可被 <svg/onload=> 等写法绕过，渲染侧再兜一层 */
+function sanitizeHtml(html: string | null | undefined) {
+  if (!html) return null
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })
+}
+
 async function load() {
   loading.value = true
   try {
     detail.value = await predictionApi.detail(id)
     if (detail.value.contentHtml) {
-      content.value = detail.value.contentHtml
+      content.value = sanitizeHtml(detail.value.contentHtml)
     }
     if (detail.value.saleEndTime) {
       remain.value = Math.max(0, Math.floor((new Date(detail.value.saleEndTime).getTime() - Date.now()) / 1000))
@@ -140,7 +156,7 @@ async function unlock() {
 
 async function loadContent() {
   const data = await predictionApi.content(id)
-  content.value = data.contentHtml
+  content.value = sanitizeHtml(data.contentHtml)
   watermark.value = data.watermark
 }
 
@@ -165,7 +181,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-loading="loading" class="page">
+  <div v-loading="loading" class="page ui-page view-prediction-detail">
     <template v-if="detail">
       <div class="head">
         <div class="head-left">
@@ -206,8 +222,50 @@ onBeforeUnmount(() => {
           <el-card shadow="never" class="block">
             <template #header><span class="block-title">摘要（免费）</span></template>
             <p class="summary">{{ detail.summary }}</p>
-            <div class="chips">
-              <span v-for="(f, i) in detail.freeItems" :key="i" class="chip">{{ f.label }}</span>
+          </el-card>
+
+          <el-card v-if="detail.items?.length" shadow="never" class="block">
+            <template #header>
+              <div class="content-head">
+                <span class="block-title">预测项</span>
+                <span class="items-meta">
+                  共 {{ detail.itemsTotal }} 项 · 免费 {{ detail.itemsFree }} 项
+                  <template v-if="lockedItemCount > 0"> · {{ lockedItemCount }} 项待解锁</template>
+                </span>
+              </div>
+            </template>
+
+            <div class="item-list">
+              <div v-for="(it, i) in detail.items" :key="i" class="item-row" :class="{ locked: it.locked }">
+                <span class="item-no">{{ String(i + 1).padStart(2, '0') }}</span>
+                <span class="item-label">{{ it.label || itemTypeName(it.itemType) }}</span>
+                <span class="item-value">
+                  <template v-if="!it.locked">
+                    <PickBalls
+                      v-if="isNumberItem(it.itemType) && it.value"
+                      :type-code="detail.typeCode"
+                      :item-type="it.itemType"
+                      :value="it.value"
+                      size="xs"
+                    />
+                    <span v-else class="value-text">{{ it.value }}</span>
+                  </template>
+                  <template v-else>
+                    <span v-for="n in lockBallCount(it)" :key="n" class="lock-ball">?</span>
+                    <span v-if="!lockBallCount(it)" class="value-text muted">解锁后可见</span>
+                  </template>
+                </span>
+                <span class="item-tag" :class="it.free ? 'is-free' : it.locked ? 'is-paid' : 'is-open'">
+                  {{ it.free ? '免费' : it.locked ? '付费 · 未解锁' : '付费 · 已解锁' }}
+                </span>
+              </div>
+            </div>
+
+            <div v-if="lockedItemCount > 0" class="items-foot">
+              <span>还有 {{ lockedItemCount }} 项号码与完整分析需解锁后可见</span>
+              <el-button type="primary" size="small" :loading="buying" @click="unlock">
+                {{ detail.isFree ? '免费查看' : `${price} 积分解锁` }}
+              </el-button>
             </div>
           </el-card>
 
@@ -328,11 +386,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; min-height: 60vh; }
+.page { min-height: 60vh; }
 .head { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 14px; }
 .tags { display: flex; gap: 6px; margin-bottom: 8px; }
 .head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.35; }
-.meta { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.meta { margin: 0; font-size: 12px; color: var(--text-sub); }
 .countdown {
   flex: 0 0 auto; text-align: center; padding: 10px 16px; border-radius: 10px;
   background: var(--el-color-primary-light-9); color: var(--el-color-primary);
@@ -345,27 +403,54 @@ onBeforeUnmount(() => {
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
 .block { margin-bottom: 14px; border-radius: 12px; }
 .block-title { font-weight: 600; font-size: 14px; }
-.summary { margin: 0 0 10px; line-height: 1.7; color: var(--el-text-color-regular); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { font-size: 12px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); padding: 3px 10px; border-radius: 10px; }
-.draw-source { font-size: 12px; color: var(--el-text-color-secondary); }
+.summary { margin: 0 0 10px; line-height: 1.7; color: var(--text-main); }
+/* 预测项列表：免费项出号码，付费未解锁项画占位球 */
+.items-meta { font-size: 12px; color: var(--text-sub); }
+.item-list { display: flex; flex-direction: column; }
+.item-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; }
+.item-row + .item-row { border-top: 1px dashed var(--border-soft); }
+.item-no {
+  flex: 0 0 20px; font-size: 11.5px; font-weight: 600; color: #a6b0c0;
+  font-variant-numeric: tabular-nums;
+}
+.item-label { flex: 0 0 auto; min-width: 72px; font-size: 12.5px; color: var(--text-sub); }
+.item-value { display: flex; flex: 1 1 auto; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.value-text { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.value-text.muted { font-weight: 400; color: #9aa6b8; }
+.lock-ball {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #eef1f6; color: #b3bdcb; font-size: 11px; font-weight: 700;
+}
+.item-tag {
+  flex: 0 0 auto; margin-left: auto; padding: 1px 8px; border-radius: 6px; font-size: 11px;
+}
+.item-tag.is-free { color: #1f9d6b; background: #e8f7f0; }
+.item-tag.is-paid { color: #9aa6b8; background: var(--surface-soft); }
+.item-tag.is-open { color: var(--brand); background: var(--el-color-primary-light-9); }
+.items-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-top: 14px; padding: 12px 14px; border-radius: 10px;
+  background: var(--surface-soft); font-size: 12px; color: var(--text-sub);
+}
+.draw-source { font-size: 12px; color: var(--text-sub); }
 .draw-numbers { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .draw-extra { font-size: 13px; color: var(--gold); font-weight: 600; }
 .locked-inner { position: relative; min-height: 260px; }
 .blur-lines { filter: blur(6px); opacity: .55; }
-.blur-line { height: 14px; background: var(--el-border-color-lighter); border-radius: 6px; margin-bottom: 12px; }
+.blur-line { height: 14px; background: var(--border-soft); border-radius: 6px; margin-bottom: 12px; }
 .blur-line:nth-child(2n) { width: 78%; }
 .lock-mask {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 8px; text-align: center;
 }
 .lock-title { margin: 4px 0 0; font-size: 16px; font-weight: 600; }
-.lock-hint { margin: 0 0 8px; font-size: 12px; color: var(--el-text-color-secondary); }
+.lock-hint { margin: 0 0 8px; font-size: 12px; color: var(--text-sub); }
 .price-tip {
-  margin-top: 8px; font-size: 12px; color: var(--el-text-color-regular);
+  margin-top: 8px; font-size: 12px; color: var(--text-main);
   background: var(--el-fill-color-light); padding: 8px 12px; border-radius: 8px; max-width: 320px;
 }
-.tip-note { margin-top: 4px; color: var(--el-text-color-secondary); font-size: 11px; }
+.tip-note { margin-top: 4px; color: var(--text-sub); font-size: 11px; }
 .watermark-wrap { position: relative; overflow: hidden; }
 .watermark {
   position: absolute; inset: 0; display: flex; flex-wrap: wrap; align-content: flex-start;
@@ -378,19 +463,19 @@ onBeforeUnmount(() => {
 .creator-card { border-radius: 12px; }
 .creator-top { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
 .pen-name { font-size: 15px; font-weight: 600; }
-.level { font-size: 12px; color: var(--el-text-color-secondary); }
+.level { font-size: 12px; color: var(--text-sub); }
 .accuracy { display: flex; align-items: center; gap: 10px; padding: 10px; background: var(--el-fill-color-lighter); border-radius: 10px; }
 .acc-score { font-size: 26px; font-weight: 700; color: var(--el-color-primary); }
-.acc-label { font-size: 12px; color: var(--el-text-color-regular); line-height: 1.5; }
-.acc-label span { color: var(--el-text-color-secondary); }
+.acc-label { font-size: 12px; color: var(--text-main); line-height: 1.5; }
+.acc-label span { color: var(--text-sub); }
 .price-line { display: flex; justify-content: space-between; margin-top: 14px; font-size: 13px; }
 .price-line strong { color: var(--el-color-danger); font-size: 16px; }
-.formula { font-size: 11px; color: var(--el-text-color-placeholder); margin-top: 4px; }
+.formula { font-size: 11px; color: var(--text-sub); margin-top: 4px; }
 .follow { width: 100%; margin-top: 12px; }
 .notice-card { border-radius: 12px; background: var(--el-fill-color-lighter); }
 .notice-title { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
-.notice-text { margin: 0; font-size: 12px; line-height: 1.7; color: var(--el-text-color-secondary); }
-.report-line { margin: 10px 0 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.notice-text { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-sub); }
+.report-line { margin: 10px 0 0; font-size: 12px; color: var(--text-sub); }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .head { flex-direction: column; }

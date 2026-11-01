@@ -82,6 +82,9 @@ public class OrderServiceImpl implements OrderService {
         if (user == null) {
             throw new BizException(ResultCode.UNAUTHORIZED);
         }
+        if (!user.isEnabled()) {
+            throw new BizException(ResultCode.FORBIDDEN, "账号不可用，请联系客服");
+        }
         if (user.getRiskStatus() != null && user.getRiskStatus() == 1) {
             throw new BizException(ResultCode.RISK_LIMITED, "账号已被限制消费");
         }
@@ -112,6 +115,11 @@ public class OrderServiceImpl implements OrderService {
         }
 
         int price = prediction.getPricePoints() == null ? 0 : prediction.getPricePoints();
+        // 免费预测不产生订单：pointService.consume 要求积分 > 0，直接走扣减会抛「扣减积分必须大于 0」
+        if (price <= 0) {
+            return new OrderDtos.UnlockResult("", predictionId, 0, pointService.balance(userId),
+                    OrdPredictionOrder.STATUS_PAID);
+        }
         CreCreator creator = creatorMapper.selectById(prediction.getCreatorId());
         BigDecimal rate = creator == null || creator.getPlatformFeeRate() == null
                 ? new BigDecimal("0.20") : creator.getPlatformFeeRate();
@@ -148,8 +156,11 @@ public class OrderServiceImpl implements OrderService {
             throw new BizException(ResultCode.ILLEGAL_ARGUMENT, "幂等键已被其他订单使用，请更换后重试");
         }
 
-        prediction.setBuyerCount((prediction.getBuyerCount() == null ? 0 : prediction.getBuyerCount()) + 1);
-        predictionMapper.updateById(prediction);
+        // 原子自增：整行 update 会覆盖同事务外的其它字段变更（浏览量、状态等）
+        predictionMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<PrdPrediction>()
+                        .eq(PrdPrediction::getId, predictionId)
+                        .setSql("buyer_count = buyer_count + 1"));
 
         log.info("解锁成功 user={}, prediction={}, order={}, price={}", userId, predictionId, orderNo, price);
         return new OrderDtos.UnlockResult(orderNo, predictionId, price, balanceAfter,
@@ -220,6 +231,13 @@ public class OrderServiceImpl implements OrderService {
                 log.warn("退款消息推送失败 orderNo={} err={}", order.getOrderNo(), e.getMessage());
             }
             count++;
+        }
+        if (count > 0) {
+            // 退款后回退买家数，否则页面上的「已解锁 N 人」会虚高
+            predictionMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<PrdPrediction>()
+                            .eq(PrdPrediction::getId, predictionId)
+                            .setSql("buyer_count = GREATEST(buyer_count - " + count + ", 0)"));
         }
         log.info("预测 {} 退款完成，共 {} 笔", predictionId, count);
         return count;

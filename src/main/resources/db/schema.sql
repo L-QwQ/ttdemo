@@ -9,6 +9,13 @@
 --         因此对已有库重跑不会报错，也不会覆盖已调整过的配置值。
 --
 -- 约定：积分 BIGINT 整数；金额 INT 分；时间 DATETIME；软删除字段 deleted
+--
+-- 变更记录（向后兼容，历史库直接重跑本脚本即可，幂等）：
+--   · 复式号码本：usr_pick.red_numbers 128 → 255、blue_numbers 64 → 128。
+--     复式存的是整个号码池（双色球 8+2 主号 23 字符、20 码补零后约 60 字符），原长度余量偏紧。
+--   · 号码本兑奖：复式按 C(n,k) 拆注逐注判定后汇总（bets / winBets / breakdown 由接口计算），无表结构变化。
+--   · 预测项可见性：付费未解锁项的号码只在服务层裁剪，表结构不变。
+--   · 随机预测复式：由请求参数 betMode=SINGLE/MULTI 控制，结果不落库，无表结构变化。
 -- =====================================================================
 
 
@@ -348,7 +355,7 @@ CREATE TABLE IF NOT EXISTS `prd_prediction_item` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `prediction_id` BIGINT UNSIGNED NOT NULL,
   `item_type`     VARCHAR(24)  NOT NULL,
-  `item_value`    VARCHAR(255) NOT NULL,
+  `item_value`    VARCHAR(255) NOT NULL COMMENT '预测项取值；号码型为逗号分隔的号码池（复式可 20+ 个，如 8 码红球池）',
   `item_label`    VARCHAR(128) NULL,
   `is_free`       TINYINT      NOT NULL DEFAULT 0,
   `weight`        DECIMAL(5,2) NOT NULL DEFAULT 1.00,
@@ -708,15 +715,15 @@ ON DUPLICATE KEY UPDATE `remark` = VALUES(`remark`);
 INSERT INTO `lot_lottery_type`
 (`code`,`name`,`category`,`draw_weekdays`,`draw_time_of_day`,`sale_end_offset_min`,`play_config`,`sort_no`,`status`) VALUES
 ('SSQ','双色球',1,'2,4,7','21:15:00',20,
- '{"groups":[{"key":"RED","name":"红球","min":1,"max":33,"pickMin":1,"pickMax":20,"supports":["SINGLE","MULTI","DAN","KILL"]},{"key":"BLUE","name":"蓝球","min":1,"max":16,"pickMin":1,"pickMax":1,"supports":["SINGLE","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":21,"max":183},{"key":"SPAN","name":"跨度","min":0,"max":32},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"},{"key":"BIG_SMALL","name":"大小比","pattern":"^\\\\d+:\\\\d+$"}]}',1,1),
+ '{"groups":[{"key":"RED","name":"红球","min":1,"max":33,"pickMin":1,"pickMax":20,"drawCount":6,"supports":["SINGLE","MULTI","DAN","KILL"]},{"key":"BLUE","name":"蓝球","min":1,"max":16,"pickMin":1,"pickMax":1,"drawCount":1,"supports":["SINGLE","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":21,"max":183},{"key":"SPAN","name":"跨度","min":0,"max":32},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"},{"key":"BIG_SMALL","name":"大小比","pattern":"^\\\\d+:\\\\d+$"}]}',1,1),
 ('DLT','大乐透',2,'1,3,6','21:25:00',20,
- '{"groups":[{"key":"RED","name":"前区","min":1,"max":35,"pickMin":1,"pickMax":18,"supports":["SINGLE","MULTI","DAN","KILL"]},{"key":"BLUE","name":"后区","min":1,"max":12,"pickMin":1,"pickMax":2,"supports":["SINGLE","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":15,"max":165},{"key":"SPAN","name":"跨度","min":0,"max":34},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"}]}',2,1),
+ '{"groups":[{"key":"RED","name":"前区","min":1,"max":35,"pickMin":1,"pickMax":18,"drawCount":5,"supports":["SINGLE","MULTI","DAN","KILL"]},{"key":"BLUE","name":"后区","min":1,"max":12,"pickMin":1,"pickMax":2,"drawCount":2,"supports":["SINGLE","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":15,"max":165},{"key":"SPAN","name":"跨度","min":0,"max":34},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"}]}',2,1),
 ('FC3D','福彩3D',1,'0','21:15:00',20,
- '{"groups":[{"key":"RED","name":"号码","min":0,"max":9,"pickMin":3,"pickMax":3,"supports":["SINGLE","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":0,"max":27},{"key":"SPAN","name":"跨度","min":0,"max":9},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"},{"key":"BIG_SMALL","name":"大小比","pattern":"^\\\\d+:\\\\d+$"}]}',3,1),
+ '{"groups":[{"key":"RED","name":"号码","min":0,"max":9,"pickMin":3,"pickMax":3,"drawCount":3,"supports":["SINGLE","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":0,"max":27},{"key":"SPAN","name":"跨度","min":0,"max":9},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"},{"key":"BIG_SMALL","name":"大小比","pattern":"^\\\\d+:\\\\d+$"}]}',3,1),
 ('PL3','排列3',2,'0','21:25:00',20,
- '{"groups":[{"key":"RED","name":"号码","min":0,"max":9,"pickMin":3,"pickMax":3,"supports":["SINGLE","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":0,"max":27},{"key":"SPAN","name":"跨度","min":0,"max":9},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"}]}',4,1),
+ '{"groups":[{"key":"RED","name":"号码","min":0,"max":9,"pickMin":3,"pickMax":3,"drawCount":3,"supports":["SINGLE","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":0,"max":27},{"key":"SPAN","name":"跨度","min":0,"max":9},{"key":"ODD_EVEN","name":"奇偶比","pattern":"^\\\\d+:\\\\d+$"}]}',4,1),
 ('KL8','快乐8',1,'0','21:30:00',20,
- '{"groups":[{"key":"RED","name":"号码","min":1,"max":80,"pickMin":1,"pickMax":20,"supports":["SINGLE","MULTI","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":210,"max":1410},{"key":"SPAN","name":"跨度","min":0,"max":79}]}',5,1)
+ '{"groups":[{"key":"RED","name":"号码","min":1,"max":80,"pickMin":1,"pickMax":10,"drawCount":20,"supports":["SINGLE","MULTI","DAN","KILL"]}],"formItems":[{"key":"SUM_RANGE","name":"和值区间","min":55,"max":755},{"key":"SPAN","name":"跨度","min":0,"max":79}]}',5,1)
 ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `play_config`=VALUES(`play_config`);
 
 -- ---------- 11. 种子数据：敏感词（核心违规话术） ----------
@@ -817,6 +824,45 @@ CREATE TABLE IF NOT EXISTS `usr_sign_in` (
   UNIQUE KEY `uk_user_date` (`user_id`, `sign_date`),
   KEY `idx_user` (`user_id`, `sign_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日签到';
+
+-- 用户自选号码本（会员功能）：保存自己看好的号码，可按最新开奖自动兑奖
+CREATE TABLE IF NOT EXISTS `usr_pick` (
+  `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`       BIGINT UNSIGNED NOT NULL,
+  `type_code`     VARCHAR(16)  NOT NULL,
+  `issue_no`      VARCHAR(16)  NULL COMMENT '绑定期号，按期兑奖；为空时按最新开奖兜底',
+  `red_numbers`   VARCHAR(255) NOT NULL COMMENT '主号码，逗号分隔；复式存整个号码池（双色球可到 20 个），3D/排列3 为 3 位',
+  `blue_numbers`  VARCHAR(128) NULL COMMENT '副号码：双色球蓝球 / 大乐透后区；复式存整个号码池',
+  `remark`        VARCHAR(64)  NULL COMMENT '备注，便于区分自选/机选等',
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_type` (`user_id`, `type_code`),
+  KEY `idx_user_time` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户自选号码本（会员功能；支持单式与复式，复式兑奖时按组合拆注）';
+
+-- 历史库补 issue_no 列（新建库已在 CREATE 里包含）
+SET @has_pick_issue = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usr_pick' AND COLUMN_NAME = 'issue_no');
+SET @pick_ddl = IF(@has_pick_issue = 0,
+    'ALTER TABLE `usr_pick` ADD COLUMN `issue_no` VARCHAR(16) NULL COMMENT ''绑定期号，按期兑奖；为空时按最新开奖兜底'' AFTER `type_code`',
+    'DO 0');
+PREPARE pick_stmt FROM @pick_ddl; EXECUTE pick_stmt; DEALLOCATE PREPARE pick_stmt;
+
+-- 历史库放宽号码列（复式号码池比单式长得多：双色球 8+2 主号 23 字符、20 码约 60 字符，原 128/64 余量偏紧）
+SET @pick_red_len = (SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usr_pick' AND COLUMN_NAME = 'red_numbers');
+SET @pick_red_ddl = IF(@pick_red_len IS NOT NULL AND @pick_red_len < 255,
+    'ALTER TABLE `usr_pick` MODIFY COLUMN `red_numbers` VARCHAR(255) NOT NULL COMMENT ''主号码，逗号分隔；复式存整个号码池（双色球可到 20 个），3D/排列3 为 3 位''',
+    'DO 0');
+PREPARE pick_red_stmt FROM @pick_red_ddl; EXECUTE pick_red_stmt; DEALLOCATE PREPARE pick_red_stmt;
+
+SET @pick_blue_len = (SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usr_pick' AND COLUMN_NAME = 'blue_numbers');
+SET @pick_blue_ddl = IF(@pick_blue_len IS NOT NULL AND @pick_blue_len < 128,
+    'ALTER TABLE `usr_pick` MODIFY COLUMN `blue_numbers` VARCHAR(128) NULL COMMENT ''副号码：双色球蓝球 / 大乐透后区；复式存整个号码池''',
+    'DO 0');
+PREPARE pick_blue_stmt FROM @pick_blue_ddl; EXECUTE pick_blue_stmt; DEALLOCATE PREPARE pick_blue_stmt;
 
 -- ---------- 4. 注销申请 ----------
 CREATE TABLE IF NOT EXISTS `usr_deactivation` (

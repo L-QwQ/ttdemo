@@ -51,6 +51,34 @@ export interface RandomItem {
   weight: number
 }
 
+/** 复式每组规格：standard 为单式一注的号码个数，min/max 为复式可选范围 */
+export interface BetGroupSpec {
+  key: string
+  name: string
+  standard: number
+  min: number
+  max: number
+  defaultValue: number
+}
+
+export interface BetSpec {
+  supported: boolean
+  note: string
+  unitPrice: number
+  groups: BetGroupSpec[]
+}
+
+/** 本注投注信息：注数 = 各组组合数之积，金额 = 注数 × 2 元 */
+export interface BetInfo {
+  mode: string
+  modeName: string
+  betCount: number
+  amount: number
+  unitPrice: number
+  formula: string
+  label: string
+}
+
 export interface RandomSet {
   method: string
   methodName: string
@@ -58,6 +86,7 @@ export interface RandomSet {
   groups: RandomGroup[]
   metrics: RandomMetrics
   items: RandomItem[]
+  bet: BetInfo
 }
 
 export interface HistoryRow {
@@ -102,11 +131,21 @@ export interface GenerateParams {
   sumMin?: number
   sumMax?: number
   seed?: number
+  /** SINGLE 单式 / MULTI 复式 */
+  betMode?: string
+  /** 复式主号个数 */
+  multiMain?: number
+  /** 复式副号个数 */
+  multiSub?: number
 }
 
 export const randomApi = {
   methods(typeCode?: string) {
     return request<RandomMethodVO[]>({ url: '/v1/random/methods', method: 'get', params: { typeCode } })
+  },
+  /** 复式规格：每组单注个数与复式可选范围 */
+  betOptions(typeCode: string) {
+    return request<BetSpec>({ url: '/v1/random/bet-options', method: 'get', params: { typeCode } })
   },
   /** 会员状态与今日剩余免费次数 */
   quota() {

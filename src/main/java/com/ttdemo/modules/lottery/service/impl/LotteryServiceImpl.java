@@ -258,17 +258,21 @@ public class LotteryServiceImpl implements LotteryService {
 
     @Override
     public void validateNumbers(LotLotteryType type, String red, String blue) {
+        validateDrawNumbers(type, red, blue);
+    }
+
+    @Override
+    public void validateDrawNumbers(LotLotteryType type, String red, String blue) {
         if (red == null || red.isBlank()) {
             throw new BizException(ResultCode.ILLEGAL_ARGUMENT, "开奖号码不能为空");
         }
-        List<Integer> reds = parseNumbers(red);
         JsonNode groups = parseConfig(type).get("groups");
         if (groups == null || !groups.isArray() || groups.isEmpty()) {
             throw new BizException(ResultCode.ILLEGAL_ARGUMENT, "彩种玩法配置缺失");
         }
-        checkGroup(groups.get(0), reds, type.getName() + "主号码");
+        checkDrawGroup(groups.get(0), parseNumbers(red), type.getName() + "主号码");
         if (blue != null && !blue.isBlank() && groups.size() > 1) {
-            checkGroup(groups.get(1), parseNumbers(blue), type.getName() + "副号码");
+            checkDrawGroup(groups.get(1), parseNumbers(blue), type.getName() + "副号码");
         }
     }
 
@@ -334,6 +338,30 @@ public class LotteryServiceImpl implements LotteryService {
         if (values.size() < pickMin || values.size() > pickMax) {
             throw new BizException(ResultCode.ILLEGAL_ARGUMENT,
                     label + "个数应在 " + pickMin + "-" + pickMax + " 之间");
+        }
+        for (Integer v : values) {
+            if (v < min || v > max) {
+                throw new BizException(ResultCode.ILLEGAL_ARGUMENT,
+                        label + "取值范围应为 " + min + "-" + max + "，当前值 " + v);
+            }
+        }
+    }
+
+    /**
+     * 开奖号码校验：个数由官方决定，不能用投注可选的 pickMax 来卡。
+     * 快乐8 一注最多选 10 个，但每期开奖开 20 个号码，两者是不同概念。
+     * 分组配置了 drawCount 时按它精确校验，未配置时只校验取值范围。
+     */
+    private void checkDrawGroup(JsonNode group, List<Integer> values, String label) {
+        int min = group.path("min").asInt(0);
+        int max = group.path("max").asInt(99);
+        int drawCount = group.path("drawCount").asInt(0);
+        if (values.isEmpty()) {
+            throw new BizException(ResultCode.ILLEGAL_ARGUMENT, label + "不能为空");
+        }
+        if (drawCount > 0 && values.size() != drawCount) {
+            throw new BizException(ResultCode.ILLEGAL_ARGUMENT,
+                    label + "应为 " + drawCount + " 个号码，实际 " + values.size() + " 个");
         }
         for (Integer v : values) {
             if (v < min || v > max) {

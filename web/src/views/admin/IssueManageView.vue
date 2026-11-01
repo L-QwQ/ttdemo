@@ -200,7 +200,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-issue-manage">
     <header class="head">
       <div>
         <h1>期次管理</h1>
@@ -363,10 +363,9 @@ onMounted(async () => {
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .head h1 { margin: 0 0 6px; font-size: 20px; }
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.sub { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); }
+.sub { margin: 0; font-size: 13px; color: var(--text-sub); }
 .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.filters .count { margin-left: auto; font-size: 13px; color: var(--el-text-color-secondary); }
+.filters .count { margin-left: auto; font-size: 13px; color: var(--text-sub); }
 .table { background: #fff; border-radius: 10px; }
-.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
+.muted { color: var(--text-sub); font-size: 12px; }
 </style>

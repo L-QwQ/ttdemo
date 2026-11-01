@@ -56,7 +56,7 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card ui-page view-login-log">
     <h2 class="page-title">登录日志</h2>
     <p class="page-desc">记录注册、验证码登录、密码登录与后台登录，含 IP 与 User-Agent</p>
 
@@ -76,7 +76,7 @@ onMounted(fetchList)
       <el-button @click="handleReset">重置</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="phone" label="手机号" width="130" />
       <el-table-column label="类型" width="120">
@@ -111,9 +111,4 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
 </style>

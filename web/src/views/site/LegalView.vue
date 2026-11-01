@@ -170,7 +170,7 @@ const doc = computed<Doc>(() => DOCS[String(route.params.type)] ?? DOCS.terms!)
 </script>
 
 <template>
-  <div class="legal">
+  <div class="legal ui-page view-legal">
     <header class="head">
       <h1>{{ doc.title }}</h1>
       <p class="sub">{{ doc.subtitle }}</p>
@@ -203,7 +203,7 @@ const doc = computed<Doc>(() => DOCS[String(route.params.type)] ?? DOCS.terms!)
 <style scoped>
 .legal { max-width: 820px; margin: 0 auto; }
 .head { margin-bottom: 16px; }
-.head h1 { margin: 0 0 6px; font-size: 24px; }
+.head h1 { margin: 0 0 6px; font-size: 22px; }
 .sub { margin: 0 0 4px; font-size: 13px; color: var(--text-sub); }
 .meta { margin: 0; font-size: 12px; color: var(--text-sub); }
 .notice { margin-bottom: 18px; }

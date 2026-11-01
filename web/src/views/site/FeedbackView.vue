@@ -88,7 +88,7 @@ onMounted(fetchMine)
 </script>
 
 <template>
-  <div class="feedback-page">
+  <div class="feedback-page ui-page view-feedback">
     <div class="page-card">
       <h2 class="page-title">意见反馈</h2>
       <p class="page-desc">遇到问题或有功能建议都可以提，管理员回复后可在下方「我的反馈」中查看</p>
@@ -200,7 +200,7 @@ onMounted(fetchMine)
 
 .expand-text.reply {
   padding: 10px 12px;
-  background: #f5f7fb;
+  background: var(--surface-soft);
   border-radius: 8px;
 }
 

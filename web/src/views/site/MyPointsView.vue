@@ -73,7 +73,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-my-points">
     <div class="page-head">
       <h1>我的积分</h1>
       <el-button type="primary" plain @click="$router.push('/rewards')">去兑换权益</el-button>
@@ -156,17 +156,16 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page { max-width: 980px; margin: 0 auto; padding: 24px 16px 90px; }
 h1 { font-size: 22px; margin: 0 0 16px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.stat { background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; padding: 14px 16px; }
-.label { display: block; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px 16px; }
+.label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
 .value { font-size: 24px; font-weight: 700; }
 .value.primary { color: var(--el-color-primary); }
 .block { margin-bottom: 14px; border-radius: 12px; }
 .t { font-weight: 600; font-size: 14px; }
-.rate { margin: 0 0 12px; font-size: 12px; color: var(--el-text-color-secondary); }
-.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.rate { margin: 0 0 12px; font-size: 12px; color: var(--text-sub); }
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 10px; }
 .tier {
   border: 1px solid var(--el-border-color); background: #fff; border-radius: 10px;
   padding: 14px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; align-items: center;
@@ -175,7 +174,7 @@ h1 { font-size: 22px; margin: 0 0 16px; }
 .tier:hover { border-color: var(--el-color-primary); color: var(--el-color-primary); }
 .tier:disabled { opacity: .6; cursor: not-allowed; }
 .amount { font-size: 18px; font-weight: 600; }
-.points { font-size: 12px; color: var(--el-text-color-secondary); }
+.points { font-size: 12px; color: var(--text-sub); }
 .in { color: var(--el-color-success); font-weight: 600; }
 .out { color: var(--el-color-danger); font-weight: 600; }
 .pager { margin-top: 12px; justify-content: center; }

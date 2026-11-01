@@ -44,13 +44,18 @@ public class UserServiceImpl implements UserService {
     private final PointService pointService;
     private final SysConfigService configService;
     private final MessageService messageService;
+    /** 注销时清号码本；PickService 依赖 UserService，构造器加 @Lazy 打破循环 */
+    private final com.ttdemo.modules.pick.service.PickService pickService;
 
     public UserServiceImpl(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
                            SmsCodeService smsCodeService, AvatarStorageService avatarStorageService,
                            UsrDeactivationMapper deactivationMapper, PointService pointService,
                            SysConfigService configService,
-                           MessageService messageService) {
+                           MessageService messageService,
+                           @org.springframework.context.annotation.Lazy
+                           com.ttdemo.modules.pick.service.PickService pickService) {
         this.messageService = messageService;
+        this.pickService = pickService;
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.smsCodeService = smsCodeService;
@@ -360,6 +365,12 @@ public class UserServiceImpl implements UserService {
         // 剩余积分清零并写流水，保证账务可追溯
         if (pointsLeft > 0) {
             pointService.consume(user.getId(), pointsLeft, "DEACTIVATE", String.valueOf(id), "注销账号清零剩余积分");
+        }
+        // 号码本是纯个人偏好数据，无审计价值，注销时一并清除，避免个人信息残留
+        try {
+            pickService.clear(user.getId());
+        } catch (Exception e) {
+            // 清理失败不阻断注销流程
         }
         // 停用 + 令牌版本自增，使已签发令牌立即失效
         userMapper.update(null, new LambdaUpdateWrapper<SysUser>()

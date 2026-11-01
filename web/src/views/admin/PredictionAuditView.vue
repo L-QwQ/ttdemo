@@ -66,7 +66,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-prediction-audit">
     <header class="head">
       <div>
         <h1>预测审核</h1>
@@ -90,7 +90,7 @@ onMounted(load)
       </el-table-column>
       <el-table-column prop="title" label="标题" min-width="260" show-overflow-tooltip>
         <template #default="{ row }">
-          <a class="link" @click="router.push(`/prediction/${row.id}`)">{{ row.title }}</a>
+          <router-link class="link" :to="`/prediction/${row.id}`">{{ row.title }}</router-link>
         </template>
       </el-table-column>
       <el-table-column prop="penName" label="创作者" width="120" />
@@ -133,13 +133,12 @@ onMounted(load)
 .page { padding: 4px; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .head h1 { margin: 0 0 6px; font-size: 20px; }
-.sub { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); }
+.sub { margin: 0; font-size: 13px; color: var(--text-sub); }
 .table { background: #fff; border-radius: 10px; }
 .sla { font-size: 12px; font-weight: 600; }
 .sla.urgent { color: #f56c6c; }
 .sla.warn { color: #e6a23c; }
-.sla.expired { color: var(--el-text-color-placeholder); }
+.sla.expired { color: var(--text-sub); }
 .link { color: var(--el-color-primary); cursor: pointer; }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
-.pager { margin-top: 14px; justify-content: flex-end; }
+.muted { color: var(--text-sub); font-size: 12px; }
 </style>

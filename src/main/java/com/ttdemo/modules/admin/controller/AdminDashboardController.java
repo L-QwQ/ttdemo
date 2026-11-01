@@ -3,8 +3,11 @@ package com.ttdemo.modules.admin.controller;
 import com.ttdemo.common.api.PageQuery;
 import com.ttdemo.common.api.PageResult;
 import com.ttdemo.common.api.R;
+import com.ttdemo.modules.admin.dto.AdminDistributionVO;
 import com.ttdemo.modules.admin.dto.AdminPlatformStatsVO;
 import com.ttdemo.modules.admin.dto.AdminStatsVO;
+import com.ttdemo.modules.admin.dto.AdminTrendVO;
+import com.ttdemo.modules.admin.service.AdminDashboardService;
 import com.ttdemo.modules.admin.service.AdminUserService;
 import com.ttdemo.modules.creator.service.CreatorService;
 import com.ttdemo.modules.log.entity.SysLoginLog;
@@ -29,16 +32,19 @@ import com.ttdemo.security.perm.RequirePerm;
 public class AdminDashboardController {
 
     private final AdminUserService adminUserService;
+    private final AdminDashboardService adminDashboardService;
     private final LoginLogService loginLogService;
     private final PredictionService predictionService;
     private final CreatorService creatorService;
     private final OrderService orderService;
     private final LotteryService lotteryService;
 
-    public AdminDashboardController(AdminUserService adminUserService, LoginLogService loginLogService,
+    public AdminDashboardController(AdminUserService adminUserService, AdminDashboardService adminDashboardService,
+                                    LoginLogService loginLogService,
                                     PredictionService predictionService, CreatorService creatorService,
                                     OrderService orderService, LotteryService lotteryService) {
         this.adminUserService = adminUserService;
+        this.adminDashboardService = adminDashboardService;
         this.loginLogService = loginLogService;
         this.predictionService = predictionService;
         this.creatorService = creatorService;
@@ -68,6 +74,20 @@ public class AdminDashboardController {
                 officialDrawn
         );
         return R.ok(vo);
+    }
+
+    /** 按天趋势：新增用户 / 登录 / 预测 / 订单 / 积分 / 开奖，days 取值 7-30 */
+    @GetMapping("/stats/trend")
+    @RequirePerm(Permissions.DASHBOARD_VIEW)
+    public R<AdminTrendVO> trend(@RequestParam(defaultValue = "14") int days) {
+        return R.ok(adminDashboardService.trend(days));
+    }
+
+    /** 彩种 / 订单状态 / 期次状态分布 */
+    @GetMapping("/stats/distribution")
+    @RequirePerm(Permissions.DASHBOARD_VIEW)
+    public R<AdminDistributionVO> distribution() {
+        return R.ok(adminDashboardService.distribution());
     }
 
     @GetMapping("/logs")

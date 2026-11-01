@@ -1,25 +1,33 @@
 :root {
-  /* 彩票平台主题：红金主色 */
-  --brand: #d92b2b;
-  --brand-dark: #b01f1f;
-  --brand-grad: linear-gradient(135deg, #e0442e 0%, #d92b2b 45%, #b01f1f 100%);
-  --gold: #d9982b;
+  /* Cloud / slate / blue theme. Lottery ball colors remain semantic. */
+  --brand: #3563e9;
+  --brand-dark: #274bc0;
+  --brand-grad: linear-gradient(140deg, #5681f5, #3563e9);
+  --gold: #ad7d36;
   --gold-soft: #fdf3e3;
-  --el-color-primary: #d92b2b;
-  --el-color-primary-light-3: #e35c5c;
-  --el-color-primary-light-5: #ea8a8a;
-  --el-color-primary-light-7: #f2b8b8;
-  --el-color-primary-light-8: #f6cccc;
-  --el-color-primary-light-9: #fbe5e5;
-  --el-color-primary-dark-2: #b01f1f;
-  --page-bg: #f7f7f5;
+  --el-color-primary: #3563e9;
+  --el-color-primary-light-3: #7292f0;
+  --el-color-primary-light-5: #9ab1f4;
+  --el-color-primary-light-7: #c2d0f9;
+  --el-color-primary-light-8: #d7e0fc;
+  --el-color-primary-light-9: #eef3ff;
+  --el-color-primary-dark-2: #274bc0;
+  --page-bg: #f5f7fb;
   --surface: #ffffff;
-  --text-main: #26221f;
-  --text-sub: #6b6560;
-  --border-soft: #eae5e0;
-  --red-ball: #d92b2b;
+  --surface-soft: #f5f7fa;
+  --surface-hover: #f0f4fc;
+  --text-main: #202b40;
+  --text-sub: #69768c;
+  --border-soft: #e7ecf3;
+  --red-ball: #d94d58;
   --blue-ball: #2b6cd9;
   --hit: #22a06b;
+  /* 统一圆角与阴影：页面里不要再各写一套 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(28, 46, 80, 0.04);
+  --shadow-md: 0 6px 18px rgba(28, 46, 80, 0.06);
 }
 
 * {
@@ -34,7 +42,7 @@ body,
 }
 
 body {
-  font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
   color: var(--text-main);
   background: var(--page-bg);
   -webkit-font-smoothing: antialiased;
@@ -71,8 +79,9 @@ a {
 .page-card {
   background: var(--surface);
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
 }
 
 .card-hover {
@@ -86,22 +95,44 @@ a {
 
 .page-title {
   margin: 0 0 4px;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .page-desc {
-  margin: 0 0 20px;
-  font-size: 13px;
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  line-height: 1.7;
   color: var(--text-sub);
 }
 
+/* 筛选栏：统一成一块浅底条，和表格区分开 */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+/* 分页统一右对齐 */
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* 通用空状态 */
+.empty-block {
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-sub);
 }
 
 .mono {
@@ -119,7 +150,7 @@ a {
   line-height: 18px;
 }
 
-.type-tag[data-code='SSQ'] { background: #d92b2b; }
+.type-tag[data-code='SSQ'] { background: #d94d58; }
 .type-tag[data-code='DLT'] { background: #2b7cd9; }
 .type-tag[data-code='FC3D'] { background: #c2541a; }
 .type-tag[data-code='PL3'] { background: #5a34b0; }
@@ -143,13 +174,123 @@ a {
   background: rgba(154, 160, 166, 0.12);
 }
 
+/* ===== Element Plus 统一规范 ===== */
+/* 表格：浅灰表头、柔化竖线、品牌色行hover */
+.el-table {
+  --el-table-border-color: var(--border-soft);
+  --el-table-header-bg-color: var(--surface-soft);
+  --el-table-header-text-color: var(--text-sub);
+  --el-table-row-hover-bg-color: var(--surface-hover);
+  --el-table-text-color: var(--text-main);
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.el-table .cell {
+  line-height: 1.55;
+}
+
+.el-table--border .el-table__cell {
+  border-right-color: #f0f3f8;
+}
+
+.el-table__empty-text {
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+/* 圆角与控件尺寸 */
+.el-button,
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper,
+.el-input-number {
+  border-radius: var(--radius-sm);
+}
+
+.el-card {
+  border-color: var(--border-soft);
+  border-radius: var(--radius-lg);
+}
+
+.el-dialog,
+.el-message-box {
+  border-radius: var(--radius-lg);
+}
+
+.el-tag {
+  border-radius: 6px;
+}
+
+.el-form-item__label {
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+/* 弹窗头尾统一留白 */
+.el-dialog__header {
+  margin-right: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.el-dialog__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.el-dialog__footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
 /* ===== 滚动条 ===== */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d8d2cc;
+  background: #ccd5e2;
   border-radius: 4px;
+}
+
+/* Shared interaction and spacing rules. */
+:root {
+  --el-font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
+  --el-text-color-primary: var(--text-main);
+  --el-text-color-regular: #536179;
+  --el-border-color: #dce3ed;
+  --el-border-color-light: var(--border-soft);
+  --el-border-radius-base: 8px;
+}
+body { line-height: 1.6; }
+::selection { background: #dbe6ff; color: #2649b5; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.el-button { font-weight: 500; transition: background-color .2s, border-color .2s, box-shadow .2s; }
+.el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) { box-shadow: 0 3px 8px #274bc012; }
+.el-table .el-table__cell { padding: 12px 0; }
+.el-card.is-never-shadow { box-shadow: var(--shadow-sm); }
+.el-input__wrapper, .el-select__wrapper { min-height: 36px; }
+.el-tabs__item { font-weight: 500; }
+.el-empty__description p { line-height: 1.8; }
+.el-dialog { max-width: calc(100vw - 32px); }
+.el-message-box { max-width: calc(100vw - 32px); }
+.page-head .sub { line-height: 1.8; }
+@media (max-width: 640px) {
+  .page-head { flex-wrap: wrap; gap: 12px; }
+  .page-head h1 { font-size: 22px; }
+  .page-card { padding: 18px 16px; }
+  .toolbar { padding: 12px; }
+  .pager, .el-pagination { max-width: 100%; flex-wrap: wrap; gap: 6px; }
+  .el-radio-group { max-width: 100%; flex-wrap: wrap; row-gap: 8px; }
+  .el-checkbox__label { white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

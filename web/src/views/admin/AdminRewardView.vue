@@ -169,7 +169,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-admin-reward">
     <header class="head">
       <div>
         <h1>积分权益管理</h1>
@@ -333,12 +333,11 @@ onMounted(async () => {
 .page { padding: 4px; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
 h1 { margin: 0 0 4px; font-size: 20px; }
-.sub { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.sub { margin: 0; font-size: 12px; color: var(--text-sub); }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .table { background: #fff; border-radius: 10px; width: 100%; }
-.pager { margin-top: 12px; justify-content: flex-end; }
 .user-cell { display: flex; flex-direction: column; line-height: 1.4; }
-.user-cell em { font-style: normal; font-size: 11px; color: var(--el-text-color-secondary); }
-.muted { color: var(--el-text-color-placeholder); font-size: 12px; }
-.hint { margin-left: 8px; font-size: 11px; color: var(--el-text-color-secondary); }
+.user-cell em { font-style: normal; font-size: 11px; color: var(--text-sub); }
+.muted { color: var(--text-sub); font-size: 12px; }
+.hint { margin-left: 8px; font-size: 11px; color: var(--text-sub); }
 </style>

@@ -5,7 +5,8 @@ import { predictionApi, type PredictionQuery } from '@/api/prediction'
 import { lotteryApi } from '@/api/lottery'
 import type { LotteryType, PredictionListItem } from '@/types/lottery'
 import { formatDateTime } from '@/utils/format'
-import { typeName, remainText } from '@/utils/lottery'
+import { typeName, remainText, isNumberItem, itemTypeName } from '@/utils/lottery'
+import PickBalls from '@/components/lottery/PickBalls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,6 +62,11 @@ function open(item: PredictionListItem) {
   router.push(`/prediction/${item.id}`)
 }
 
+/** 付费项数量：列表只下发免费项号码，付费项只给个数 */
+function lockedCount(item: PredictionListItem) {
+  return Math.max(0, (item.itemCount ?? 0) - (item.freeCount ?? item.freeItems.length))
+}
+
 const filteredTypes = computed(() => types.value.filter((t) => t.status === 1))
 
 onMounted(async () => {
@@ -70,7 +76,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page ui-page view-prediction-list">
     <header class="page-head">
       <div>
         <h1>预测广场</h1>
@@ -104,7 +110,7 @@ onMounted(async () => {
         <el-button type="primary" plain @click="router.push('/publish')">发布一条预测</el-button>
       </el-empty>
 
-      <article v-for="item in list" :key="item.id" class="card" @click="open(item)">
+      <article v-for="item in list" :key="item.id" class="card" tabindex="0" role="link" @click="open(item)" @keydown.enter="open(item)">
         <div class="card-top">
           <div class="tags">
             <span class="type-tag" :data-code="item.typeCode">{{ typeName(item.typeCode) }}</span>
@@ -118,8 +124,25 @@ onMounted(async () => {
         <h3 class="title">{{ item.title }}</h3>
         <p class="summary">{{ item.summary }}</p>
 
-        <div class="chips">
-          <span v-for="(f, i) in item.freeItems" :key="i" class="chip">免费可见：{{ f.label }}</span>
+        <div class="picks">
+          <div v-for="(f, i) in item.freeItems" :key="`f${i}`" class="pick">
+            <span class="pick-label">{{ f.label || itemTypeName(f.itemType) }}</span>
+            <PickBalls
+              v-if="isNumberItem(f.itemType) && f.value"
+              :type-code="item.typeCode"
+              :item-type="f.itemType"
+              :value="f.value"
+              size="xs"
+              :max="10"
+            />
+            <span v-else-if="f.value" class="pick-value">{{ f.value }}</span>
+          </div>
+          <div v-if="lockedCount(item) > 0" class="pick locked">
+            <span class="lock-dot" />
+            <span v-if="item.isPurchased">{{ lockedCount(item) }} 个付费项 · 已解锁，点开查看</span>
+            <span v-else-if="item.isFree">还有 {{ lockedCount(item) }} 项，点开查看</span>
+            <span v-else>{{ lockedCount(item) }} 个付费项 · {{ item.pricePoints }} 积分解锁后可见</span>
+          </div>
         </div>
 
         <div class="card-foot">
@@ -165,15 +188,14 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 16px; }
 .page-head h1 { margin: 0 0 6px; font-size: 22px; }
-.sub { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; }
+.sub { margin: 0; color: var(--text-sub); font-size: 13px; }
 .filter { margin-bottom: 16px; border-radius: 10px; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .list { display: flex; flex-direction: column; gap: 14px; min-height: 200px; }
 .card {
-  background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 12px;
+  background: #fff; border: 1px solid var(--border-soft); border-radius: 12px;
   padding: 16px 18px; cursor: pointer; transition: box-shadow .2s, transform .2s;
 }
 .card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.07); transform: translateY(-1px); }
@@ -181,17 +203,69 @@ onMounted(async () => {
 .tags { display: flex; gap: 6px; }
 .countdown { font-size: 12px; color: var(--el-color-warning); }
 .title { margin: 4px 0 8px; font-size: 17px; line-height: 1.4; }
-.summary { margin: 0 0 10px; color: var(--el-text-color-regular); font-size: 13px; line-height: 1.6; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.chip { font-size: 12px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); padding: 2px 8px; border-radius: 10px; }
-.card-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed var(--el-border-color-lighter); padding-top: 10px; }
+.summary { margin: 0 0 10px; color: var(--text-main); font-size: 13px; line-height: 1.6; }
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  max-width: 100%;
+}
+.pick-label {
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+.pick-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.pick.locked {
+  border-style: dashed;
+  background: #fff;
+  color: #9aa6b8;
+  font-size: 12px;
+}
+.lock-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c2cad6;
+}
+.card-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed var(--border-soft); padding-top: 10px; }
 .creator { display: flex; align-items: center; gap: 8px; }
 .name { font-size: 13px; font-weight: 500; }
-.score { font-size: 12px; color: var(--el-text-color-secondary); }
+.score { font-size: 12px; color: var(--text-sub); }
 .price-box { text-align: right; }
 .price { color: var(--el-color-danger); font-size: 18px; font-weight: 600; }
 .price small { font-size: 12px; }
-.breakdown { font-size: 11px; color: var(--el-text-color-placeholder); }
-.meta { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--el-text-color-placeholder); }
+.breakdown { font-size: 11px; color: var(--text-sub); }
+.meta { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-sub); }
 .pager { margin-top: 20px; justify-content: center; }
+
+.filter { border-radius: 14px; }
+.card { padding: 24px; border-radius: 14px; }
+.tags, .creator, .meta { flex-wrap: wrap; }
+.summary { color: var(--text-sub); line-height: 1.8; }
+.card-top, .card-foot { gap: 16px; }
+.price-box { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .card { padding: 18px; }
+  .card-top { flex-wrap: wrap; gap: 8px; }
+  .card-foot { align-items: flex-start; }
+  .creator .score { flex-basis: 100%; }
+  .meta { gap: 8px 12px; }
+  .filter :deep(.el-card__body) { padding: 16px; }
+}
 </style>

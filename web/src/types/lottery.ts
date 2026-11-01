@@ -46,7 +46,10 @@ export interface CreatorBrief {
 
 export interface FreeItem {
   itemType: string
-  label: string
+  /** 创作者填的展示文案，可能为空，前端按 itemType 兜底 */
+  label: string | null
+  /** 号码值，仅免费项下发 */
+  value: string | null
 }
 
 export interface PredictionListItem {
@@ -63,6 +66,9 @@ export interface PredictionListItem {
   priceBreakdown: PriceBreakdown
   summary: string
   freeItems: FreeItem[]
+  /** 预测项总数（含付费项），用于「还有 N 项待解锁」 */
+  itemCount: number
+  freeCount: number
   creator: CreatorBrief
   viewCount: number
   buyerCount: number
@@ -90,6 +96,16 @@ export interface HitInfo {
   items: ItemHit[]
 }
 
+/** 详情页的预测项：付费未解锁时 value 为 null，用 count 画占位球 */
+export interface PredictionItemView {
+  itemType: string
+  label: string | null
+  value: string | null
+  count: number
+  free: boolean
+  locked: boolean
+}
+
 export interface PredictionDetail {
   id: number
   predictionNo: string
@@ -106,6 +122,7 @@ export interface PredictionDetail {
   priceBreakdown: PriceBreakdown
   summary: string
   freeItems: FreeItem[]
+  items: PredictionItemView[]
   contentHtml: string | null
   contentImages: string[]
   isPurchased: boolean

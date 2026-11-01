@@ -83,7 +83,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div v-loading="loading" class="page">
+  <div v-loading="loading" class="page ui-page view-creator-dashboard">
     <header class="head">
       <div>
         <h1>创作者看板</h1>
@@ -133,7 +133,7 @@ onMounted(load)
       <el-table :data="list" size="small">
         <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            <a class="link" @click="router.push(`/prediction/${row.id}`)">{{ row.title }}</a>
+            <router-link class="link" :to="`/prediction/${row.id}`">{{ row.title }}</router-link>
           </template>
         </el-table-column>
         <el-table-column prop="issueNo" label="期号" width="90" />
@@ -175,13 +175,12 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .head h1 { margin: 0 0 6px; font-size: 22px; }
-.sub { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 14px; }
-.stat { background: #fff; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; padding: 14px 16px; }
-.label { display: block; font-size: 12px; color: var(--el-text-color-secondary); margin-bottom: 6px; }
+.sub { margin: 0; font-size: 13px; color: var(--text-sub); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 12px; margin-bottom: 14px; }
+.stat { background: #fff; border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px 16px; }
+.label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
 .stat strong { font-size: 22px; }
 .primary { color: var(--el-color-primary); }
 .block { margin-bottom: 14px; border-radius: 12px; }
@@ -189,8 +188,8 @@ onMounted(load)
 .block-head { display: flex; justify-content: space-between; align-items: center; }
 .acc { display: flex; gap: 20px; align-items: center; }
 .score { font-size: 44px; font-weight: 700; color: var(--el-color-primary); }
-.acc-detail { font-size: 12px; line-height: 1.9; color: var(--el-text-color-regular); }
-.calc { color: var(--el-text-color-placeholder); }
+.acc-detail { font-size: 12px; line-height: 1.9; color: var(--text-main); }
+.calc { color: var(--text-sub); }
 .link { color: var(--el-color-primary); cursor: pointer; }
 .pager { margin-top: 12px; justify-content: center; }
 </style>

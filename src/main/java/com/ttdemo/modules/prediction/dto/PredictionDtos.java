@@ -63,9 +63,28 @@ public final class PredictionDtos {
     ) {
     }
 
+    /**
+     * 免费可见的预测项。value 只对免费项下发，付费项的号码不出现在任何列表接口里，
+     * 前端据此渲染号码球，付费项只给数量。
+     */
     public record FreeItem(
             String itemType,
-            String label
+            String label,
+            String value
+    ) {
+    }
+
+    /**
+     * 详情页的预测项列表：免费项与已解锁项带 value，付费未解锁项 value 为 null、locked=true，
+     * 前端用 count 画出等量的占位球，既说明「这里有几个号」又不泄露号码。
+     */
+    public record ItemView(
+            String itemType,
+            String label,
+            String value,
+            int count,
+            boolean free,
+            boolean locked
     ) {
     }
 
@@ -90,6 +109,8 @@ public final class PredictionDtos {
             PriceBreakdown priceBreakdown,
             String summary,
             List<FreeItem> freeItems,
+            int itemCount,
+            int freeCount,
             CreatorBrief creator,
             int viewCount,
             int buyerCount,
@@ -118,6 +139,7 @@ public final class PredictionDtos {
             PriceBreakdown priceBreakdown,
             String summary,
             List<FreeItem> freeItems,
+            List<ItemView> items,
             String contentHtml,
             List<String> contentImages,
             boolean isPurchased,

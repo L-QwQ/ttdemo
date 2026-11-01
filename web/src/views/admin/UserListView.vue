@@ -119,7 +119,7 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="page-card">
+  <div class="page-card ui-page view-user-list">
     <h2 class="page-title">用户管理</h2>
     <p class="page-desc">支持按手机号/昵称搜索、状态与角色筛选；封禁后该用户令牌立即失效</p>
 
@@ -143,7 +143,7 @@ onMounted(fetchList)
       <el-button @click="handleReset">重置</el-button>
     </div>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="phone" label="手机号" width="130" />
       <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
@@ -199,9 +199,4 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
 </style>

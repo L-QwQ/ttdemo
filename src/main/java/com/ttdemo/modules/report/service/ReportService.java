@@ -80,7 +80,7 @@ public class ReportService {
         report.setTargetId(request.targetId());
         report.setReasonType(request.reasonType());
         report.setContent(trim(request.content()));
-        report.setEvidenceUrl(trim(request.evidenceUrl()));
+        report.setEvidenceUrl(normalizeUrl(trim(request.evidenceUrl())));
         report.setStatus(SysReport.STATUS_PENDING);
         reportMapper.insert(report);
 
@@ -206,5 +206,17 @@ public class ReportService {
 
     private static String trim(String value) {
         return value == null ? null : value.trim();
+    }
+
+    /** 证据链接只允许 http/https：javascript:、data: 这类协议会把存储型 XSS 带到后台 */
+    private static String normalizeUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String lower = url.toLowerCase();
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            throw new BizException(ResultCode.BAD_REQUEST, "证据链接必须是 http 或 https 地址");
+        }
+        return url;
     }
 }

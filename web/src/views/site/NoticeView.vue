@@ -90,7 +90,7 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="notice-page">
+  <div class="notice-page ui-page view-notice">
     <div class="page-card">
       <div class="page-head">
         <div>
@@ -123,7 +123,7 @@ onMounted(fetchList)
             :key="item.id"
             class="notice-item"
             :class="{ unread: !item.readAt }"
-            @click="openNotice(item)"
+            tabindex="0" role="button" @keydown.enter="openNotice(item)" @keydown.space.prevent="openNotice(item)" @click="openNotice(item)"
           >
             <span class="dot" :class="{ active: !item.readAt }" />
             <div class="item-main">
@@ -222,7 +222,7 @@ onMounted(fetchList)
 }
 
 .notice-item:hover {
-  background: #fafbfd;
+  background: var(--surface-hover);
 }
 
 .notice-item.unread .item-title {

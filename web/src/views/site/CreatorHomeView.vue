@@ -49,7 +49,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div v-loading="loading" class="page">
+  <div v-loading="loading" class="page ui-page view-creator-home">
     <template v-if="home">
       <el-card shadow="never" class="profile">
         <div class="top">
@@ -74,7 +74,7 @@ onMounted(load)
 
       <h2 class="section">TA 的预测</h2>
       <el-empty v-if="list.length === 0" description="暂无在售预测" />
-      <div v-for="item in list" :key="item.id" class="row card-hover" @click="$router.push(`/prediction/${item.id}`)">
+      <div v-for="item in list" :key="item.id" class="row card-hover" tabindex="0" role="link" @keydown.enter="$router.push(`/prediction/${item.id}`)" @click="$router.push(`/prediction/${item.id}`)">
         <div class="row-main">
           <div class="row-tags">
             <span class="type-tag" :data-code="item.typeCode">{{ typeName(item.typeCode) }}</span>
@@ -94,29 +94,28 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
 .profile { border-radius: 12px; margin-bottom: 20px; }
 .top { display: flex; gap: 16px; align-items: flex-start; }
 .info { flex: 1; }
 .info h1 { margin: 0 0 6px; font-size: 22px; }
 .tags { margin: 0 0 6px; font-size: 12px; color: var(--el-color-primary); }
-.intro { margin: 0; font-size: 13px; color: var(--el-text-color-secondary); line-height: 1.6; }
+.intro { margin: 0; font-size: 13px; color: var(--text-sub); line-height: 1.6; }
 .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 18px; }
 .stats div { text-align: center; background: var(--el-fill-color-lighter); border-radius: 10px; padding: 10px 6px; }
 .stats strong { display: block; font-size: 18px; color: var(--el-color-primary); }
-.stats span { font-size: 12px; color: var(--el-text-color-secondary); }
+.stats span { font-size: 12px; color: var(--text-sub); }
 .section { font-size: 16px; margin: 8px 0 12px; }
 .row {
   display: flex; justify-content: space-between; gap: 16px; background: #fff;
-  border: 1px solid var(--el-border-color-lighter); border-radius: 12px; padding: 14px 16px;
+  border: 1px solid var(--border-soft); border-radius: 12px; padding: 14px 16px;
   margin-bottom: 10px; cursor: pointer; transition: transform .2s, box-shadow .2s;
 }
 .row:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(60,40,30,.07); }
 .row-tags { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.row-issue { font-size: 12px; color: var(--el-text-color-secondary); }
+.row-issue { font-size: 12px; color: var(--text-sub); }
 .row h3 { margin: 0 0 6px; font-size: 15px; }
-.row p { margin: 0; font-size: 12px; color: var(--el-text-color-secondary); }
+.row p { margin: 0; font-size: 12px; color: var(--text-sub); }
 .row-side { text-align: right; }
 .price { color: var(--el-color-danger); font-weight: 600; }
-.meta { font-size: 11px; color: var(--el-text-color-placeholder); }
+.meta { font-size: 11px; color: var(--text-sub); }
 </style>

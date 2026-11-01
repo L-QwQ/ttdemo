@@ -22,9 +22,12 @@ import java.util.stream.Collectors;
 public class HitJudge {
 
     private final ObjectMapper objectMapper;
+    private final com.ttdemo.modules.lottery.service.LotteryService lotteryService;
 
-    public HitJudge(ObjectMapper objectMapper) {
+    public HitJudge(ObjectMapper objectMapper,
+                    com.ttdemo.modules.lottery.service.LotteryService lotteryService) {
         this.objectMapper = objectMapper;
+        this.lotteryService = lotteryService;
     }
 
     public record ItemResult(Long itemId, int hit, BigDecimal ratio, String detail) {
@@ -35,11 +38,13 @@ public class HitJudge {
     }
 
     /**
-     * @param items 预测项
-     * @param reds  开奖主号码（红球/前区/位号）
-     * @param blues 开奖副号码（蓝球/后区）
+     * @param items    预测项
+     * @param reds     开奖主号码（红球/前区/位号）
+     * @param blues    开奖副号码（蓝球/后区）
+     * @param typeCode 彩种编码，用于取号码池中值判断大小
      */
-    public JudgeResult judge(List<PrdPredictionItem> items, List<Integer> reds, List<Integer> blues) {
+    public JudgeResult judge(List<PrdPredictionItem> items, List<Integer> reds, List<Integer> blues,
+                            String typeCode) {
         List<ItemResult> results = new ArrayList<>();
         BigDecimal weightedHit = BigDecimal.ZERO;
         BigDecimal weightSum = BigDecimal.ZERO;
@@ -49,7 +54,8 @@ public class HitJudge {
         int span = reds.isEmpty() ? 0 : reds.stream().mapToInt(Integer::intValue).max().getAsInt()
                 - reds.stream().mapToInt(Integer::intValue).min().getAsInt();
         String oddEven = ratio(reds, n -> n % 2 == 1);
-        String bigSmall = ratio(reds, n -> n > mid(reds));
+        int middle = poolMid(typeCode, reds);
+        String bigSmall = ratio(reds, n -> n > middle);
 
         for (PrdPredictionItem item : items) {
             ItemResult result;
@@ -114,8 +120,10 @@ public class HitJudge {
                         "{\"killed\":\"" + join(predicted) + "\",\"overlap\":\"" + join(common) + "\"}");
             }
             case "BLUE_SINGLE": {
-                boolean hit = !predicted.isEmpty() && predicted.stream().allMatch(blueSet::contains)
-                        && (predicted.size() == 1 || predicted.size() == blueSet.size());
+                // 蓝球/后区可能是一个池（复式 8+2 的 2 个蓝球、大乐透后区 3 个号）：
+                // 开奖副号全部落在预测池内即算中；单式时池里只有一个号，等价于「相等」。
+                boolean hit = !predicted.isEmpty() && !blueSet.isEmpty()
+                        && blueSet.stream().allMatch(predicted::contains);
                 return new ItemResult(item.getId(), hit ? 1 : 0, hit ? BigDecimal.ONE : BigDecimal.ZERO,
                         "{\"predicted\":\"" + join(predicted) + "\",\"actual\":\"" + join(blues) + "\"}");
             }
@@ -184,6 +192,31 @@ public class HitJudge {
                 })
                 .filter(v -> v >= 0)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 大/小的分界值：按彩种号码池的中值（双色球红球 1-33 → 17）。
+     * 不能用本期开奖号码的极值中值——那样每期基准都不一样，同一个「3:3」在不同期判定结果会漂移，
+     * 也会与随机预测页用号码池范围算出的口径对不上。
+     */
+    private int poolMid(String typeCode, List<Integer> reds) {
+        if (typeCode != null && !typeCode.isBlank()) {
+            try {
+                var type = lotteryService.requireType(typeCode);
+                JsonNode cfg = objectMapper.readTree(type.getPlayConfig());
+                JsonNode groups = cfg.get("groups");
+                if (groups != null && groups.isArray() && !groups.isEmpty()) {
+                    int lo = groups.get(0).path("min").asInt(0);
+                    int hi = groups.get(0).path("max").asInt(0);
+                    if (hi > lo) {
+                        return (lo + hi) / 2;
+                    }
+                }
+            } catch (Exception e) {
+                // 配置异常时退回开奖号码极值，保证判定不中断
+            }
+        }
+        return mid(reds);
     }
 
     private int mid(List<Integer> reds) {

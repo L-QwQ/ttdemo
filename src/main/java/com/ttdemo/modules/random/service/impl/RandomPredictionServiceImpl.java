@@ -44,17 +44,24 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
 
     /** 位号玩法允许重复号码（如 3D 的 1,1,2），其余彩种号码不重复 */
     private static final Set<String> POSITIONAL_TYPES = Set.of("FC3D", "PL3");
-    /** 标准注结构（无历史数据时兜底）：play_config 的 pickMin 是可选取号码数范围，不等于一注的数量 */
+    /**
+     * 一注的号码个数（标准注结构）。play_config 的 pickMin/pickMax 是可投注的号码个数范围，不等于一注的数量。
+     * 快乐8 每期开奖开 20 个号码，但一注（选十玩法）只能选 10 个，二者不能混用。
+     */
     private static final Map<String, Integer> DEFAULT_STANDARD = Map.of(
             "SSQ:RED", 6, "SSQ:BLUE", 1,
             "DLT:RED", 5, "DLT:BLUE", 2,
             "FC3D:RED", 3, "PL3:RED", 3,
-            "KL8:RED", 20);
+            "KL8:RED", 10);
     private static final int MAX_COUNT = 5;
     private static final int MAX_HISTORY = 100;
     private static final int DEFAULT_HISTORY = 30;
     private static final String DISCLAIMER =
             "以上号码由算法随机生成，仅用于演示与个人参考，不构成任何投注建议，也不代表平台对结果的任何承诺。";
+    /** 一注 2 元，只用于把复式注数折算成投注金额，平台不提供代购 */
+    private static final BigDecimal UNIT_PRICE = new BigDecimal("2");
+    private static final String MODE_SINGLE = "SINGLE";
+    private static final String MODE_MULTI = "MULTI";
 
     private static final String CFG_GRADE_ENABLED = "random.vip.enabled";
     private static final String CFG_FREE_QUOTA = "random.vip.daily.free";
@@ -137,6 +144,57 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
     }
 
     @Override
+    public RandomDtos.BetSpec betSpec(String typeCode) {
+        if (typeCode == null || typeCode.isBlank()) {
+            throw new BizException(ResultCode.ILLEGAL_ARGUMENT, "请选择彩种");
+        }
+        LotLotteryType type = lotteryService.requireType(typeCode);
+        if (POSITIONAL_TYPES.contains(type.getCode())) {
+            return new RandomDtos.BetSpec(false,
+                    "位号玩法（福彩3D / 排列3）的复式要按百位、十位、个位分别选号，暂未开放，请使用单式",
+                    UNIT_PRICE, List.of());
+        }
+        JsonNode groups = parseGroups(type);
+        Map<String, Integer> standard = standardCounts(groups, List.of(), type.getCode());
+        List<RandomDtos.BetGroupSpec> specs = new ArrayList<>();
+        for (int gi = 0; gi < groups.size(); gi++) {
+            JsonNode group = groups.get(gi);
+            String key = group.path("key").asString("MAIN");
+            String name = group.path("name").asString(key);
+            int min = group.path("min").asInt(1);
+            int max = group.path("max").asInt(33);
+            int pickMin = group.path("pickMin").asInt(1);
+            int pickMax = Math.max(pickMin, group.path("pickMax").asInt(pickMin));
+            int drawCount = Math.max(1, group.path("drawCount").asInt(pickMin));
+            int poolSize = max - min + 1;
+            int one = Math.min(pickMax, Math.max(1, standard.getOrDefault(key, pickMin)));
+            // 主号（红球/前区/号码池）上限取「单注上限」与「开奖个数」的较大者：
+            // 快乐8 一注只有 10 个号，但复式能选到 20 个（选十复式）。
+            // 副号（蓝球/后区）单注只允许 1-2 个，复式上限就是整池（双色球 16、大乐透 12）。
+            int limit = Math.min(poolSize, gi == 0 ? Math.max(pickMax, drawCount) : poolSize);
+            int low = Math.min(one, limit);
+            int def = Math.min(limit, one + (gi == 0 ? 2 : 1));
+            specs.add(new RandomDtos.BetGroupSpec(key, name, one, low, limit, Math.max(low, def)));
+        }
+        return new RandomDtos.BetSpec(true,
+                "复式注数 = 各号码组组合数相乘，金额按 2 元/注折算，仅供参考，平台不提供代购",
+                UNIT_PRICE, specs);
+    }
+
+    /** 复式各组取号个数；单式一律取一注的标准个数 */
+    private int[] resolvePicks(RandomDtos.BetSpec spec, RandomDtos.GenerateRequest request, boolean multi) {
+        List<RandomDtos.BetGroupSpec> groups = spec.groups();
+        int[] picks = new int[groups.size()];
+        for (int i = 0; i < groups.size(); i++) {
+            RandomDtos.BetGroupSpec group = groups.get(i);
+            Integer raw = i == 0 ? request.multiMain() : (i == 1 ? request.multiSub() : null);
+            int value = multi ? (raw == null ? group.defaultValue() : raw) : group.standard();
+            picks[i] = Math.max(group.min(), Math.min(group.max(), value));
+        }
+        return picks;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public RandomDtos.GenerateResult generate(RandomDtos.GenerateRequest request, Long userId) {
         if (request == null || request.typeCode() == null || request.typeCode().isBlank()) {
@@ -159,9 +217,12 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
 
         Stats stats = buildStats(groups, history);
         Map<String, Integer> standardCounts = standardCounts(groups, history, type.getCode());
+        RandomDtos.BetSpec betSpec = betSpec(type.getCode());
+        boolean multi = MODE_MULTI.equalsIgnoreCase(request.betMode()) && betSpec.supported();
+        int[] picks = resolvePicks(betSpec, request, multi);
         List<RandomDtos.SetResult> sets = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            sets.add(generateOne(type, groups, stats, standardCounts, method, request, random));
+            sets.add(generateOne(type, groups, stats, standardCounts, method, request, random, picks, multi));
         }
 
         int autoCount = 0;
@@ -175,7 +236,7 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
         }
         return new RandomDtos.GenerateResult(type.getCode(), type.getName(), historySize, history.size(),
                 autoCount, manualCount, buildDataNote(historySize, history),
-                sets.get(0).metrics(), sets, toHistoryRows(history, 20), DISCLAIMER);
+                sets.get(0).metrics(), sets, toHistoryRows(history, history.size()), DISCLAIMER);
     }
 
     /**
@@ -272,7 +333,8 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
 
     private RandomDtos.SetResult generateOne(LotLotteryType type, JsonNode groups, Stats stats,
                                              Map<String, Integer> standardCounts, RandomMethod method,
-                                             RandomDtos.GenerateRequest request, Random random) {
+                                             RandomDtos.GenerateRequest request, Random random,
+                                             int[] picks, boolean multi) {
         List<RandomDtos.GroupResult> groupResults = new ArrayList<>();
         List<Integer> mainNumbers = List.of();
         int mainMin = 0;
@@ -288,7 +350,11 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
             int pickMin = group.path("pickMin").asInt(1);
             int pickMax = Math.max(pickMin, group.path("pickMax").asInt(pickMin));
             // 一注的号码个数：优先历史开奖结构，其次内置标准表，最后退化为 pickMin
-            int k = Math.min(pickMax, Math.max(1, standardCounts.getOrDefault(key, pickMin)));
+            int standard = Math.min(pickMax, Math.max(1, standardCounts.getOrDefault(key, pickMin)));
+            // 复式按用户选择的个数取号，但不得少于单注个数、不得超出号码池
+            int k = multi
+                    ? Math.min(max - min + 1, Math.max(standard, gi < picks.length ? picks[gi] : standard))
+                    : standard;
             boolean allowRepeat = POSITIONAL_TYPES.contains(type.getCode());
             boolean isMain = gi == 0;
 
@@ -314,8 +380,42 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
         }
 
         RandomDtos.Metrics metrics = metrics(mainNumbers, mainMin, mainMax);
-        List<RandomDtos.ItemPayload> items = buildItems(groupResults, metrics, type.getCode());
-        return new RandomDtos.SetResult(method.name(), method.getTitle(), reason, groupResults, metrics, items);
+        RandomDtos.BetInfo bet = buildBet(groupResults, standardCounts, multi);
+        List<RandomDtos.ItemPayload> items = buildItems(groupResults, metrics, bet, standardCounts);
+        return new RandomDtos.SetResult(method.name(), method.getTitle(), reason, groupResults, metrics, items, bet);
+    }
+
+    /**
+     * 投注信息：注数 = 各组「从 picked 个号里取 standard 个」的组合数之积，金额 = 注数 × 2 元。
+     * 例：双色球 8 红 2 蓝 → C(8,6) × C(2,1) = 28 × 2 = 56 注 → 112 元。
+     */
+    private RandomDtos.BetInfo buildBet(List<RandomDtos.GroupResult> groups,
+                                        Map<String, Integer> standardCounts, boolean multi) {
+        long betCount = 1L;
+        boolean anyMulti = false;
+        List<String> parts = new ArrayList<>();
+        StringBuilder shape = new StringBuilder();
+        for (RandomDtos.GroupResult group : groups) {
+            int picked = group.numbers().size();
+            int one = Math.min(picked, Math.max(1, standardCounts.getOrDefault(group.key(), picked)));
+            betCount *= comb(picked, one);
+            parts.add("C(" + picked + "," + one + ")");
+            if (picked > one) {
+                anyMulti = true;
+            }
+            if (shape.length() > 0) {
+                shape.append('+');
+            }
+            shape.append(picked);
+        }
+        boolean isMulti = multi && anyMulti;
+        BigDecimal amount = UNIT_PRICE.multiply(BigDecimal.valueOf(betCount));
+        String unit = UNIT_PRICE.stripTrailingZeros().toPlainString();
+        String formula = String.join(" × ", parts) + " = " + betCount + " 注 × " + unit + " 元/注";
+        String label = (isMulti ? "复式 " : "单式 ") + shape + " · " + betCount + " 注 · ¥"
+                + amount.stripTrailingZeros().toPlainString();
+        return new RandomDtos.BetInfo(isMulti ? MODE_MULTI : MODE_SINGLE, isMulti ? "复式" : "单式",
+                (int) Math.min(betCount, Integer.MAX_VALUE), amount, UNIT_PRICE, formula, label);
     }
 
     private List<Integer> pick(JsonNode group, String groupKey, int min, int max, int k, boolean allowRepeat,
@@ -333,12 +433,21 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
             case OMISSION -> topOmission(pool, omission, k, random);
             case MARKOV -> stats.issues.isEmpty() || stats.issues.size() < 2
                     ? sample(pool, n -> 1.0, k, allowRepeat, random)
-                    : sample(pool, n -> 1.0 + stats.coOccurrence.getOrDefault(n, 0) * 2.0, k, allowRepeat, random);
+                    : sample(pool, n -> 1.0 + stats.coOccurrence
+                            .getOrDefault(groupKey, Map.of()).getOrDefault(n, 0) * 2.0,
+                    k, allowRepeat, random);
             case BALANCED -> balanced(min, max, k, random);
             case GOLDEN -> golden(min, max, k, random);
-            case SUM_TARGET -> sumTarget(pool, k, allowRepeat, random,
-                    sumMin != null ? sumMin : (stats.avgSum > 0 ? (int) stats.avgSum - 20 : min * k),
-                    sumMax != null ? sumMax : (stats.avgSum > 0 ? (int) stats.avgSum + 20 : max * k));
+            case SUM_TARGET -> {
+                // 默认区间按「本注号码个数 × 池均值」估算。不能用历史和值平均数：
+                // 快乐8 的历史和值是 20 个开奖号的（约 810），而一注只有 10 个号（约 405），
+                // 直接套用会导致拒绝采样永远命中不了，只能退化回纯随机。
+                int expected = (int) Math.round((min + max) / 2.0 * k);
+                int band = Math.max(5, expected / 5);
+                yield sumTarget(pool, k, allowRepeat, random,
+                        sumMin != null ? sumMin : expected - band,
+                        sumMax != null ? sumMax : expected + band);
+            }
             // 玄学：权重来自卦象/干支/牌阵，最终仍由加权随机落号
             case ICHING, FIVE_ELEMENTS, BAZI, ZODIAC, TAROT, ALMANAC -> {
                 Map<Integer, Double> weights = oracle == null ? Map.of() : oracle.weights();
@@ -388,10 +497,8 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
                 available.remove(Integer.valueOf(chosen));
             }
         }
-        while (result.size() < k && !pool.isEmpty()) {
-            result.add(pool.get(random.nextInt(pool.size())));
-        }
-        // 位号玩法保留抽取顺序（如 3D 的 1,3,5 与 5,3,1 是不同结果），其余彩种按升序展示
+        // 位号玩法（allowRepeat）保留抽取顺序，如 3D 的 1,3,5 与 5,3,1 是不同结果；其余彩种升序。
+        // 池容量不足时宁可少一个号，也不能用 pool 重复填充凑数
         if (!allowRepeat) {
             Collections.sort(result);
         }
@@ -501,11 +608,15 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
     private record Stats(List<LotIssue> issues,
                          Map<String, Map<Integer, Integer>> freq,
                          Map<String, Map<Integer, Integer>> omission,
-                         Map<Integer, Integer> coOccurrence,
-                         double avgSum) {
+                         Map<String, Map<Integer, Integer>> coOccurrence) {
     }
 
-    /** 一注的号码个数：历史开奖结构 > 内置标准表 > pickMin */
+    /**
+     * 一注的号码个数：内置标准表 > 历史开奖结构 > pickMin。
+     * <p>
+     * 历史结构不能优先：开奖结果的号码个数不等于一注的号码个数。快乐8 每期开 20 个号码，
+     * 若按历史结构取，会把「一注 10 码」算成 20 码，必须以内置标准表为准。
+     */
     private Map<String, Integer> standardCounts(JsonNode groups, List<LotIssue> history, String typeCode) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         LotIssue last = history.isEmpty() ? null : history.get(0);
@@ -513,12 +624,15 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
             String key = groups.get(gi).path("key").asString("MAIN");
             int pickMin = groups.get(gi).path("pickMin").asInt(1);
             int pickMax = Math.max(pickMin, groups.get(gi).path("pickMax").asInt(pickMin));
-            int count = DEFAULT_STANDARD.getOrDefault(typeCode + ":" + key, pickMin);
-            if (last != null) {
+            Integer standard = DEFAULT_STANDARD.get(typeCode + ":" + key);
+            int count;
+            if (standard != null) {
+                count = standard;
+            } else if (last != null) {
                 List<Integer> numbers = parse(gi == 0 ? last.getRedNumbers() : last.getBlueNumbers());
-                if (!numbers.isEmpty()) {
-                    count = numbers.size();
-                }
+                count = numbers.isEmpty() ? pickMin : numbers.size();
+            } else {
+                count = pickMin;
             }
             counts.put(key, Math.min(pickMax, Math.max(1, count)));
         }
@@ -528,7 +642,7 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
     private Stats buildStats(JsonNode groups, List<LotIssue> issues) {
         Map<String, Map<Integer, Integer>> freq = new LinkedHashMap<>();
         Map<String, Map<Integer, Integer>> omission = new LinkedHashMap<>();
-        Map<Integer, Integer> coOccurrence = new HashMap<>();
+        Map<String, Map<Integer, Integer>> coOccurrence = new LinkedHashMap<>();
 
         for (int gi = 0; gi < groups.size(); gi++) {
             String key = groups.get(gi).path("key").asString("MAIN");
@@ -541,7 +655,7 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
                 omissionMap.put(n, Integer.MAX_VALUE);
             }
             for (int idx = 0; idx < issues.size(); idx++) {
-                List<Integer> numbers = parse(gi == 0 ? issues.get(idx).getRedNumbers() : issues.get(idx).getBlueNumbers());
+                List<Integer> numbers = parseGroup(issues.get(idx), gi);
                 for (Integer n : numbers) {
                     freqMap.merge(n, 1, Integer::sum);
                     if (omissionMap.containsKey(n)) {
@@ -554,32 +668,37 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
             omissionMap.replaceAll((n, v) -> v == Integer.MAX_VALUE ? total : v);
             freq.put(key, freqMap);
             omission.put(key, omissionMap);
+            coOccurrence.put(key, coOccurrenceOf(issues, gi));
         }
+        return new Stats(issues, freq, omission, coOccurrence);
+    }
 
-        if (!issues.isEmpty()) {
-            Set<Integer> lastNumbers = new HashSet<>(parse(issues.get(0).getRedNumbers()));
-            lastNumbers.addAll(parse(issues.get(0).getBlueNumbers()));
-            for (LotIssue issue : issues) {
-                List<Integer> nums = new ArrayList<>(parse(issue.getRedNumbers()));
-                nums.addAll(parse(issue.getBlueNumbers()));
-                boolean related = nums.stream().anyMatch(lastNumbers::contains);
-                if (related) {
-                    for (Integer n : nums) {
-                        coOccurrence.merge(n, 1, Integer::sum);
-                    }
+    /**
+     * 共现统计：以最近一期该组的号码为种子，统计其余各期中与之有交集的号码出现次数。
+     * 必须按组独立统计，否则双色球蓝球（1-16）会被算进红球权重，两个号码池互相污染。
+     */
+    private Map<Integer, Integer> coOccurrenceOf(List<LotIssue> issues, int groupIndex) {
+        Map<Integer, Integer> co = new HashMap<>();
+        if (issues.isEmpty()) {
+            return co;
+        }
+        Set<Integer> latest = new HashSet<>(parseGroup(issues.get(0), groupIndex));
+        if (latest.isEmpty()) {
+            return co;
+        }
+        for (LotIssue issue : issues) {
+            List<Integer> nums = parseGroup(issue, groupIndex);
+            if (nums.stream().anyMatch(latest::contains)) {
+                for (Integer n : nums) {
+                    co.merge(n, 1, Integer::sum);
                 }
             }
         }
-        return new Stats(issues, freq, omission, coOccurrence, avgSum(issues));
+        return co;
     }
 
-    private double avgSum(List<LotIssue> issues) {
-        if (issues.isEmpty()) {
-            return 0;
-        }
-        return issues.stream()
-                .mapToInt(issue -> parse(issue.getRedNumbers()).stream().mapToInt(Integer::intValue).sum())
-                .average().orElse(0);
+    private List<Integer> parseGroup(LotIssue issue, int groupIndex) {
+        return parse(groupIndex == 0 ? issue.getRedNumbers() : issue.getBlueNumbers());
     }
 
     private RandomDtos.Metrics metrics(List<Integer> numbers, int min, int max) {
@@ -596,31 +715,90 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
                 big + ":" + (numbers.size() - big));
     }
 
+    /**
+     * 结构化预测项：itemValue 是提交给命中判定用的值，itemLabel 只放「值之外」的补充信息。
+     * 历史上 label 里又写了一遍值（如 value=387-427、label=和值 387-427），前端并列展示就重复了。
+     */
     private List<RandomDtos.ItemPayload> buildItems(List<RandomDtos.GroupResult> groups,
-                                                    RandomDtos.Metrics metrics, String typeCode) {
+                                                    RandomDtos.Metrics metrics, RandomDtos.BetInfo bet,
+                                                    Map<String, Integer> standardCounts) {
         List<RandomDtos.ItemPayload> items = new ArrayList<>();
         if (groups.isEmpty()) {
             return items;
         }
+        boolean multi = MODE_MULTI.equals(bet.mode());
         RandomDtos.GroupResult main = groups.get(0);
-        items.add(new RandomDtos.ItemPayload("RED_SINGLE", String.join(",", main.numbers()),
-                main.name() + " " + main.numbers().size() + " 码", true, new BigDecimal("5.0")));
+        int mainOne = Math.min(main.numbers().size(),
+                Math.max(1, standardCounts.getOrDefault(main.key(), main.numbers().size())));
+        // 复式主号池用 RED_MULTI（命中率 ≥50% 算中），单式才是「完全一致」的 RED_SINGLE
+        items.add(new RandomDtos.ItemPayload(multi ? "RED_MULTI" : "RED_SINGLE",
+                String.join(",", main.numbers()),
+                multi ? bet.label() : main.numbers().size() + " 码", true, new BigDecimal("5.0")));
 
         if (groups.size() > 1) {
             RandomDtos.GroupResult sub = groups.get(1);
+            int subOne = Math.min(sub.numbers().size(),
+                    Math.max(1, standardCounts.getOrDefault(sub.key(), sub.numbers().size())));
             items.add(new RandomDtos.ItemPayload("BLUE_SINGLE", String.join(",", sub.numbers()),
-                    sub.name() + "：" + String.join(" ", sub.numbers()), false, new BigDecimal("3.0")));
+                    sub.numbers().size() > subOne ? "复式 " + sub.numbers().size() + " 码" : "",
+                    false, new BigDecimal("3.0")));
         }
 
-        int sumLow = Math.max(0, metrics.sum() - 10);
-        int sumHigh = metrics.sum() + 10;
+        // 复式不能直接拿池和值当预测值：12 个号的和值不是任何一注的和值，必然虚高。
+        // 折算成「一注 standard 个号」的期望值，形态项才和开奖口径对得上。
+        RandomDtos.Metrics shape = multi ? expectedMetrics(main, mainOne) : metrics;
+        int half = Math.max(10, shape.sum() / 20);
+        int sumLow = Math.max(0, shape.sum() - half);
+        int sumHigh = shape.sum() + half;
         items.add(new RandomDtos.ItemPayload("SUM_RANGE", sumLow + "-" + sumHigh,
-                "和值 " + sumLow + "-" + sumHigh, false, new BigDecimal("2.0")));
-        items.add(new RandomDtos.ItemPayload("SPAN", String.valueOf(metrics.span()),
-                "跨度 " + metrics.span(), false, new BigDecimal("1.5")));
-        items.add(new RandomDtos.ItemPayload("ODD_EVEN", metrics.oddEven(),
-                "奇偶比 " + metrics.oddEven(), false, new BigDecimal("1.0")));
+                multi ? "复式均值" : "", false, new BigDecimal("2.0")));
+        // 复式池的跨度不是任何一注的跨度，单值必然判错，索性不下发；奇偶比按池内比例折算，仍是有效形态判断
+        if (!multi) {
+            items.add(new RandomDtos.ItemPayload("SPAN", String.valueOf(shape.span()),
+                    "", false, new BigDecimal("1.5")));
+        }
+        items.add(new RandomDtos.ItemPayload("ODD_EVEN", shape.oddEven(),
+                "", false, new BigDecimal("1.0")));
         return items;
+    }
+
+    /** 复式池折算成「一注 standard 个号」的期望形态：和值与奇偶按比例缩放，跨度取池跨度 */
+    private RandomDtos.Metrics expectedMetrics(RandomDtos.GroupResult main, int standard) {
+        List<Integer> numbers = new ArrayList<>();
+        for (String text : main.numbers()) {
+            try {
+                numbers.add(Integer.parseInt(text.trim()));
+            } catch (NumberFormatException ignored) {
+                // 忽略脏数据
+            }
+        }
+        if (numbers.isEmpty()) {
+            return new RandomDtos.Metrics(0, 0, "0:0", "0:0");
+        }
+        int picked = numbers.size();
+        int poolSpan = Collections.max(numbers) - Collections.min(numbers);
+        if (standard >= picked) {
+            long oddCount = numbers.stream().filter(n -> n % 2 == 1).count();
+            return new RandomDtos.Metrics(numbers.stream().mapToInt(Integer::intValue).sum(), poolSpan,
+                    oddCount + ":" + (picked - oddCount), "");
+        }
+        int sum = (int) Math.round(numbers.stream().mapToInt(Integer::intValue).sum() * (double) standard / picked);
+        long oddRaw = Math.round(numbers.stream().filter(n -> n % 2 == 1).count() * (double) standard / picked);
+        int odd = (int) Math.max(0, Math.min(standard, oddRaw));
+        return new RandomDtos.Metrics(sum, poolSpan, odd + ":" + (standard - odd), "");
+    }
+
+    /** 组合数 C(n,k)，复式注数用 */
+    private long comb(int n, int k) {
+        if (n <= 0 || k < 0 || k > n) {
+            return 1L;
+        }
+        int r = Math.min(k, n - k);
+        long value = 1L;
+        for (int i = 0; i < r; i++) {
+            value = value * (n - i) / (i + 1);
+        }
+        return value;
     }
 
     private String buildReason(RandomMethod method, Stats stats, List<Integer> numbers,
@@ -645,8 +823,8 @@ public class RandomPredictionServiceImpl implements RandomPredictionService {
             case SUM_TARGET -> String.format("%s，本组和值 %d，跨 %d-%d", method.getDescription(),
                     numbers.stream().mapToInt(Integer::intValue).sum(), min, max);
             case BALANCED -> "强制低/中/高三区各覆盖至少 1 个，并优先生成奇偶接近平衡的组合";
-            case BALANCED_HOT -> String.format("一半取近期热号（%s），一半取深遗漏号，兼顾惯性与回补",
-                    numbers.size() > 2 ? "热号段" : "热号");
+            case BALANCED_HOT -> String.format("取 %d 个近期热号 + %d 个深遗漏号，兼顾惯性与回补",
+                    Math.max(1, numbers.size() / 2), Math.max(0, numbers.size() - Math.max(1, numbers.size() / 2)));
             case GOLDEN -> "按 0.382 / 0.618 黄金分割点把号码池切成三段，各段取样后补足";
             default -> method.getDescription();
         };
